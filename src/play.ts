@@ -306,7 +306,7 @@ const addToQueue: tool<{
   deviceId: z.ZodOptional<z.ZodString>;
 }> = {
   name: 'addToQueue',
-  description: 'Adds a track, playlist or album to the playback queue',
+  description: 'Adds a track, album, artist or playlist to the playback queue',
   schema: {
     uri: z
       .string()
@@ -353,7 +353,7 @@ const addToQueue: tool<{
       content: [
         {
           type: 'text',
-          text: `Added track ${uri} to queue`,
+          text: `Added item ${spotifyUri} to queue`,
         },
       ],
     };
