@@ -299,6 +299,67 @@ const resumePlayback: tool<{
   },
 };
 
+const addToQueue: tool<{
+  uri: z.ZodOptional<z.ZodString>;
+  type: z.ZodOptional<z.ZodEnum<['track', 'album', 'artist', 'playlist']>>;
+  id: z.ZodOptional<z.ZodString>;
+  deviceId: z.ZodOptional<z.ZodString>;
+}> = {
+  name: 'addToQueue',
+  description: 'Adds a track, playlist or album to the playback queue',
+  schema: {
+    uri: z
+      .string()
+      .optional()
+      .describe('The Spotify URI to play (overrides type and id)'),
+    type: z
+      .enum(['track', 'album', 'artist', 'playlist'])
+      .optional()
+      .describe('The type of item to play'),
+    id: z.string().optional().describe('The Spotify ID of the item to play'),
+    deviceId: z
+      .string()
+      .optional()
+      .describe('The Spotify device ID to add the track to'),
+  },
+  handler: async (args) => {
+    const { uri, type, id, deviceId } = args;
+
+    let spotifyUri = uri;
+    if (!spotifyUri && type && id) {
+      spotifyUri = `spotify:${type}:${id}`;
+    }
+
+    if (!spotifyUri) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: 'Error: Must provide either a URI or both a type and ID',
+            isError: true,
+          },
+        ],
+      };
+    }
+
+    await handleSpotifyRequest(async (spotifyApi) => {
+      await spotifyApi.player.addItemToPlaybackQueue(
+        spotifyUri,
+        deviceId || '',
+      );
+    });
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Added track ${uri} to queue`,
+        },
+      ],
+    };
+  },
+};
+
 export const playTools = [
   playMusic,
   pausePlayback,
@@ -307,4 +368,5 @@ export const playTools = [
   createPlaylist,
   addTracksToPlaylist,
   resumePlayback,
+  addToQueue,
 ];

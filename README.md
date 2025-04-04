@@ -124,6 +124,17 @@ A lightweight [Model Context Protocol (MCP)](https://modelcontextprotocol.io) se
    - **Returns**: Success status and snapshot ID
    - **Example**: `addTracksToPlaylist({ playlistId: "3cEYpjA9oz9GiPac4AsH4n", trackUris: ["spotify:track:4iV5W9uYEdYUVa79Axb7Rh"] })`
 
+6. **addToQueue**
+   - **Description**: Adds a track, album, artist or playlist to the current playback queue
+   - - **Parameters**:
+     - `uri` (string, optional): Spotify URI of the item to add to queue (overrides type and id)
+     - `type` (string, optional): Type of item to queue (track, album, artist, playlist)
+     - `id` (string, optional): Spotify ID of the item to queue
+     - `deviceId` (string, optional): ID of the device to queue on
+   - **Returns**: Success status
+   - **Example**: `addToQueue({ uri: "spotify:track:6rqhFgbbKwnb9MLmUQDhG6" })`
+   - **Alternative**: `addToQueue({ type: "track", id: "6rqhFgbbKwnb9MLmUQDhG6" })`
+
 ## Setup
 
 ### Prerequisites
