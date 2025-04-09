@@ -137,7 +137,7 @@ export async function authorizeSpotify(): Promise<void> {
     console.error(
       'Please update your spotify-config.json with a localhost redirect URI',
     );
-    console.error('Example: http://localhost:8888/callback');
+    console.error('Example: http://127.0.0.1:8888/callback');
     process.exit(1);
   }
 
@@ -157,6 +157,7 @@ export async function authorizeSpotify(): Promise<void> {
     'playlist-modify-public',
     'user-library-read',
     'user-library-modify',
+    'user-read-recently-played',
   ];
 
   const authParams = new URLSearchParams({
