@@ -298,9 +298,69 @@ const getPlaylistTracks: tool<{
   },
 };
 
+const getRecentlyPlayed: tool<{
+  limit: z.ZodOptional<z.ZodNumber>;
+}> = {
+  name: 'getRecentlyPlayed',
+  description: 'Get a list of recently played tracks on Spotify',
+  schema: {
+    limit: z
+      .number()
+      .min(1)
+      .max(50)
+      .optional()
+      .describe('Maximum number of tracks to return (1-50)'),
+  },
+  handler: async (args, extra: RequestHandlerExtra) => {
+    const { limit = 50 } = args;
+
+    const history = await handleSpotifyRequest(async (spotifyApi) => {
+      return await spotifyApi.player.getRecentlyPlayedTracks(
+        limit as MaxInt<50>,
+      );
+    });
+
+    if (history.items.length === 0) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: "You don't have any recently played tracks on Spotify",
+          },
+        ],
+      };
+    }
+
+    const formattedHistory = history.items
+      .map((item, i) => {
+        const track = item.track;
+        if (!track) return `${i + 1}. [Removed track]`;
+
+        if (isTrack(track)) {
+          const artists = track.artists.map((a) => a.name).join(', ');
+          const duration = formatDuration(track.duration_ms);
+          return `${i + 1}. "${track.name}" by ${artists} (${duration}) - ID: ${track.id}`;
+        }
+
+        return `${i + 1}. Unknown item`;
+      })
+      .join('\n');
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `# Recently Played Tracks\n\n${formattedHistory}`,
+        },
+      ],
+    };
+  }
+}
+
 export const readTools = [
   searchSpotify,
   getNowPlaying,
   getMyPlaylists,
   getPlaylistTracks,
+  getRecentlyPlayed,
 ];
