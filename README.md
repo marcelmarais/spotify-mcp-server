@@ -59,6 +59,7 @@ A lightweight [Model Context Protocol (MCP)](https://modelcontextprotocol.io) se
    - **Example**: `getMyPlaylists(10, 0)`
 
 4. **getPlaylistTracks**
+
    - **Description**: Get a list of tracks in a specific Spotify playlist
    - **Parameters**:
      - `playlistId` (string): The Spotify ID of the playlist
@@ -66,6 +67,22 @@ A lightweight [Model Context Protocol (MCP)](https://modelcontextprotocol.io) se
      - `offset` (number, optional): Index of the first track to return (default: 0)
    - **Returns**: Array of tracks with their IDs, names, artists, album, duration, and added date
    - **Example**: `getPlaylistTracks("37i9dQZEVXcJZyENOWUFo7")`
+
+5. **getRecentlyPlayed**
+
+   - **Description**: Retrieves a list of recently played tracks from Spotify.
+   - **Parameters**:
+     - `limit` (number, optional): A number specifying the maximum number of tracks to return.
+   - **Returns**: If tracks are found it returns a formatted list of recently played tracks else a message stating: "You don't have any recently played tracks on Spotify".
+   - **Example**: `getRecentlyPlayed({ limit: 10 })`
+
+6. **getRecentlyPlayed**
+
+   - **Description**: Retrieves a list of recently played tracks from Spotify.
+   - **Parameters**:
+     - `limit` (number, optional): A number specifying the maximum number of tracks to return.
+   - **Returns**: If tracks are found it returns a formatted list of recently played tracks else a message stating: "You don't have any recently played tracks on Spotify".
+   - **Example**: `getRecentlyPlayed({ limit: 10 })`
 
 ### Play / Create Operations
 
@@ -116,6 +133,7 @@ A lightweight [Model Context Protocol (MCP)](https://modelcontextprotocol.io) se
    - **Example**: `createPlaylist({ name: "Workout Mix", description: "Songs to get pumped up", public: false })`
 
 6. **addTracksToPlaylist**
+
    - **Description**: Add tracks to an existing Spotify playlist
    - **Parameters**:
      - `playlistId` (string): ID of the playlist
@@ -124,7 +142,8 @@ A lightweight [Model Context Protocol (MCP)](https://modelcontextprotocol.io) se
    - **Returns**: Success status and snapshot ID
    - **Example**: `addTracksToPlaylist({ playlistId: "3cEYpjA9oz9GiPac4AsH4n", trackUris: ["spotify:track:4iV5W9uYEdYUVa79Axb7Rh"] })`
 
-6. **addToQueue**
+7. **addToQueue**
+
    - **Description**: Adds a track, album, artist or playlist to the current playback queue
    - - **Parameters**:
      - `uri` (string, optional): Spotify URI of the item to add to queue (overrides type and id)
@@ -236,3 +255,19 @@ For Cursor, go to the MCP tab in `Cursor Settings` (command + shift + J). Add a 
 ```bash
 node path/to/spotify-mcp-server/build/index.js
 ```
+
+To set up your MCP correctly with Cline ensure you have the following file configuration set `cline_mcp_settings.json`:
+
+```json
+{
+  "mcpServers": {
+    "spotify": {
+      "command": "node",
+      "args": ["~/../spotify-mcp-server/build/index.js"],
+      "autoApprove": ["getListeningHistory", "getNowPlaying"]
+    }
+  }
+}
+```
+
+You can add additional tools to the auto approval array to run the tools without intervention.
