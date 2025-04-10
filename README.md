@@ -18,8 +18,7 @@ A lightweight [Model Context Protocol (MCP)](https://modelcontextprotocol.io) se
   - [Creating a Spotify Developer Application](#creating-a-spotify-developer-application)
   - [Spotify API Configuration](#spotify-api-configuration)
   - [Authentication Process](#authentication-process)
-- [Integrating with Claude Desktop and Cursor](#integrating-with-claude-desktop-and-cursor)
-- 
+- [Integrating with Claude Desktop, Cursor, and VsCode (Cline)](#integrating-with-claude-desktop-and-cursor)
 </details>
 
 ## Example Interactions
@@ -235,7 +234,7 @@ npm run auth
 
 7. The server will automatically refresh the access token when needed, using the refresh token.
 
-## Integrating with Claude Desktop and Cursor
+## Integrating with Claude Desktop, Cursor, and VsCode [Via Cline model extension](https://marketplace.visualstudio.com/items/?itemName=saoudrizwan.claude-dev)
 
 To use your MCP server with Claude Desktop, add it to your Claude configuration:
 
