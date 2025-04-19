@@ -1,7 +1,7 @@
 import type { RequestHandlerExtra } from '@modelcontextprotocol/sdk/shared/protocol.js';
 import type { MaxInt } from '@spotify/web-api-ts-sdk';
 import { z } from 'zod';
-import type { SpotifyTrack, tool } from './types.js';
+import type { SpotifyHandlerExtra, SpotifyTrack, tool } from './types.js';
 import { formatDuration, handleSpotifyRequest } from './utils.js';
 
 function isTrack(item: any): item is SpotifyTrack {
@@ -35,7 +35,7 @@ const searchSpotify: tool<{
       .optional()
       .describe('Maximum number of results to return (10-50)'),
   },
-  handler: async (args, extra: RequestHandlerExtra) => {
+  handler: async (args, extra: SpotifyHandlerExtra) => {
     const { query, type, limit } = args;
     const limitValue = limit ?? 10;
 
@@ -116,7 +116,7 @@ const getNowPlaying: tool<Record<string, never>> = {
   name: 'getNowPlaying',
   description: 'Get information about the currently playing track on Spotify',
   schema: {},
-  handler: async (args, extra: RequestHandlerExtra) => {
+  handler: async (args, extra: SpotifyHandlerExtra) => {
     try {
       const currentTrack = await handleSpotifyRequest(async (spotifyApi) => {
         return await spotifyApi.player.getCurrentlyPlayingTrack();
@@ -194,7 +194,7 @@ const getMyPlaylists: tool<{
       .optional()
       .describe('Maximum number of playlists to return (1-50)'),
   },
-  handler: async (args, extra: RequestHandlerExtra) => {
+  handler: async (args, extra: SpotifyHandlerExtra) => {
     const { limit = 50 } = args;
 
     const playlists = await handleSpotifyRequest(async (spotifyApi) => {
@@ -249,7 +249,7 @@ const getPlaylistTracks: tool<{
       .optional()
       .describe('Maximum number of tracks to return (1-50)'),
   },
-  handler: async (args, extra: RequestHandlerExtra) => {
+  handler: async (args, extra: SpotifyHandlerExtra) => {
     const { playlistId, limit = 50 } = args;
 
     const playlistTracks = await handleSpotifyRequest(async (spotifyApi) => {
@@ -311,7 +311,7 @@ const getRecentlyPlayed: tool<{
       .optional()
       .describe('Maximum number of tracks to return (1-50)'),
   },
-  handler: async (args, extra: RequestHandlerExtra) => {
+  handler: async (args, extra: SpotifyHandlerExtra) => {
     const { limit = 50 } = args;
 
     const history = await handleSpotifyRequest(async (spotifyApi) => {

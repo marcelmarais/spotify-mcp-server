@@ -1,5 +1,8 @@
 import type { RequestHandlerExtra } from '@modelcontextprotocol/sdk/shared/protocol.js';
+import { ServerNotification, ServerRequest } from '@modelcontextprotocol/sdk/types.js';
 import type { z } from 'zod';
+
+export type SpotifyHandlerExtra = RequestHandlerExtra<ServerRequest, ServerNotification>;
 
 export type tool<Args extends z.ZodRawShape> = {
   name: string;
@@ -7,7 +10,7 @@ export type tool<Args extends z.ZodRawShape> = {
   schema: Args;
   handler: (
     args: z.infer<z.ZodObject<Args>>,
-    extra: RequestHandlerExtra,
+    extra: SpotifyHandlerExtra,
   ) =>
     | Promise<{
         content: Array<{
