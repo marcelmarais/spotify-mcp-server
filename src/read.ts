@@ -1,39 +1,39 @@
-import type { RequestHandlerExtra } from '@modelcontextprotocol/sdk/shared/protocol.js';
-import type { MaxInt } from '@spotify/web-api-ts-sdk';
-import { z } from 'zod';
-import type { SpotifyHandlerExtra, SpotifyTrack, tool } from './types.js';
-import { formatDuration, handleSpotifyRequest } from './utils.js';
+import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
+import type { MaxInt } from "@spotify/web-api-ts-sdk";
+import { z } from "zod";
+import type { SpotifyHandlerExtra, SpotifyTrack, tool } from "./types.js";
+import { formatDuration, handleSpotifyRequest } from "./utils.js";
 
 function isTrack(item: any): item is SpotifyTrack {
   return (
     item &&
-    item.type === 'track' &&
+    item.type === "track" &&
     Array.isArray(item.artists) &&
     item.album &&
-    typeof item.album.name === 'string'
+    typeof item.album.name === "string"
   );
 }
 
 const searchSpotify: tool<{
   query: z.ZodString;
-  type: z.ZodEnum<['track', 'album', 'artist', 'playlist']>;
+  type: z.ZodEnum<["track", "album", "artist", "playlist"]>;
   limit: z.ZodOptional<z.ZodNumber>;
 }> = {
-  name: 'searchSpotify',
-  description: 'Search for tracks, albums, artists, or playlists on Spotify',
+  name: "searchSpotify",
+  description: "Search for tracks, albums, artists, or playlists on Spotify",
   schema: {
-    query: z.string().describe('The search query'),
+    query: z.string().describe("The search query"),
     type: z
-      .enum(['track', 'album', 'artist', 'playlist'])
+      .enum(["track", "album", "artist", "playlist"])
       .describe(
-        'The type of item to search for either track, album, artist, or playlist',
+        "The type of item to search for either track, album, artist, or playlist",
       ),
     limit: z
       .number()
       .min(1)
       .max(50)
       .optional()
-      .describe('Maximum number of results to return (10-50)'),
+      .describe("Maximum number of results to return (10-50)"),
   },
   handler: async (args, extra: SpotifyHandlerExtra) => {
     const { query, type, limit } = args;
@@ -49,47 +49,47 @@ const searchSpotify: tool<{
         );
       });
 
-      let formattedResults = '';
+      let formattedResults = "";
 
-      if (type === 'track' && results.tracks) {
+      if (type === "track" && results.tracks) {
         formattedResults = results.tracks.items
           .map((track, i) => {
-            const artists = track.artists.map((a) => a.name).join(', ');
+            const artists = track.artists.map((a) => a.name).join(", ");
             const duration = formatDuration(track.duration_ms);
             return `${i + 1}. "${
               track.name
             }" by ${artists} (${duration}) - ID: ${track.id}`;
           })
-          .join('\n');
-      } else if (type === 'album' && results.albums) {
+          .join("\n");
+      } else if (type === "album" && results.albums) {
         formattedResults = results.albums.items
           .map((album, i) => {
-            const artists = album.artists.map((a) => a.name).join(', ');
+            const artists = album.artists.map((a) => a.name).join(", ");
             return `${i + 1}. "${album.name}" by ${artists} - ID: ${album.id}`;
           })
-          .join('\n');
-      } else if (type === 'artist' && results.artists) {
+          .join("\n");
+      } else if (type === "artist" && results.artists) {
         formattedResults = results.artists.items
           .map((artist, i) => {
             return `${i + 1}. ${artist.name} - ID: ${artist.id}`;
           })
-          .join('\n');
-      } else if (type === 'playlist' && results.playlists) {
+          .join("\n");
+      } else if (type === "playlist" && results.playlists) {
         formattedResults = results.playlists.items
           .map((playlist, i) => {
-            return `${i + 1}. "${playlist?.name ?? 'Unknown Playlist'} (${
-              playlist?.description ?? 'No description'
+            return `${i + 1}. "${playlist?.name ?? "Unknown Playlist"} (${
+              playlist?.description ?? "No description"
             } tracks)" by ${playlist?.owner?.display_name} - ID: ${
               playlist?.id
             }`;
           })
-          .join('\n');
+          .join("\n");
       }
 
       return {
         content: [
           {
-            type: 'text',
+            type: "text",
             text:
               formattedResults.length > 0
                 ? `# Search results for "${query}" (type: ${type})\n\n${formattedResults}`
@@ -101,7 +101,7 @@ const searchSpotify: tool<{
       return {
         content: [
           {
-            type: 'text',
+            type: "text",
             text: `Error searching for ${type}s: ${
               error instanceof Error ? error.message : String(error)
             }`,
@@ -113,8 +113,8 @@ const searchSpotify: tool<{
 };
 
 const getNowPlaying: tool<Record<string, never>> = {
-  name: 'getNowPlaying',
-  description: 'Get information about the currently playing track on Spotify',
+  name: "getNowPlaying",
+  description: "Get information about the currently playing track on Spotify",
   schema: {},
   handler: async (args, extra: SpotifyHandlerExtra) => {
     try {
@@ -126,8 +126,8 @@ const getNowPlaying: tool<Record<string, never>> = {
         return {
           content: [
             {
-              type: 'text',
-              text: 'Nothing is currently playing on Spotify',
+              type: "text",
+              text: "Nothing is currently playing on Spotify",
             },
           ],
         };
@@ -139,14 +139,14 @@ const getNowPlaying: tool<Record<string, never>> = {
         return {
           content: [
             {
-              type: 'text',
-              text: 'Currently playing item is not a track (might be a podcast episode)',
+              type: "text",
+              text: "Currently playing item is not a track (might be a podcast episode)",
             },
           ],
         };
       }
 
-      const artists = item.artists.map((a) => a.name).join(', ');
+      const artists = item.artists.map((a) => a.name).join(", ");
       const album = item.album.name;
       const duration = formatDuration(item.duration_ms);
       const progress = formatDuration(currentTrack.progress_ms || 0);
@@ -155,9 +155,9 @@ const getNowPlaying: tool<Record<string, never>> = {
       return {
         content: [
           {
-            type: 'text',
+            type: "text",
             text:
-              `# Currently ${isPlaying ? 'Playing' : 'Paused'}\n\n` +
+              `# Currently ${isPlaying ? "Playing" : "Paused"}\n\n` +
               `**Track**: "${item.name}"\n` +
               `**Artist**: ${artists}\n` +
               `**Album**: ${album}\n` +
@@ -170,7 +170,7 @@ const getNowPlaying: tool<Record<string, never>> = {
       return {
         content: [
           {
-            type: 'text',
+            type: "text",
             text: `Error getting current track: ${
               error instanceof Error ? error.message : String(error)
             }`,
@@ -183,8 +183,9 @@ const getNowPlaying: tool<Record<string, never>> = {
 
 const getMyPlaylists: tool<{
   limit: z.ZodOptional<z.ZodNumber>;
+  offset: z.ZodOptional<z.ZodNumber>;
 }> = {
-  name: 'getMyPlaylists',
+  name: "getMyPlaylists",
   description: "Get a list of the current user's playlists on Spotify",
   schema: {
     limit: z
@@ -192,14 +193,20 @@ const getMyPlaylists: tool<{
       .min(1)
       .max(50)
       .optional()
-      .describe('Maximum number of playlists to return (1-50)'),
+      .describe("Maximum number of playlists to return (1-50)"),
+    offset: z
+      .number()
+      .min(0)
+      .optional()
+      .describe("The index of the first playlist to return (for pagination)"),
   },
   handler: async (args, extra: SpotifyHandlerExtra) => {
-    const { limit = 50 } = args;
+    const { limit = 50, offset = 0 } = args;
 
     const playlists = await handleSpotifyRequest(async (spotifyApi) => {
       return await spotifyApi.currentUser.playlists.playlists(
         limit as MaxInt<50>,
+        offset,
       );
     });
 
@@ -207,7 +214,7 @@ const getMyPlaylists: tool<{
       return {
         content: [
           {
-            type: 'text',
+            type: "text",
             text: "You don't have any playlists on Spotify",
           },
         ],
@@ -221,12 +228,12 @@ const getMyPlaylists: tool<{
           playlist.id
         }`;
       })
-      .join('\n');
+      .join("\n");
 
     return {
       content: [
         {
-          type: 'text',
+          type: "text",
           text: `# Your Spotify Playlists\n\n${formattedPlaylists}`,
         },
       ],
@@ -237,20 +244,26 @@ const getMyPlaylists: tool<{
 const getPlaylistTracks: tool<{
   playlistId: z.ZodString;
   limit: z.ZodOptional<z.ZodNumber>;
+  offset: z.ZodOptional<z.ZodNumber>;
 }> = {
-  name: 'getPlaylistTracks',
-  description: 'Get a list of tracks in a Spotify playlist',
+  name: "getPlaylistTracks",
+  description: "Get a list of tracks in a Spotify playlist",
   schema: {
-    playlistId: z.string().describe('The Spotify ID of the playlist'),
+    playlistId: z.string().describe("The Spotify ID of the playlist"),
     limit: z
       .number()
       .min(1)
       .max(50)
       .optional()
-      .describe('Maximum number of tracks to return (1-50)'),
+      .describe("Maximum number of tracks to return (1-50)"),
+    offset: z
+      .number()
+      .min(0)
+      .optional()
+      .describe("The index of the first track to return (for pagination)"),
   },
   handler: async (args, extra: SpotifyHandlerExtra) => {
-    const { playlistId, limit = 50 } = args;
+    const { playlistId, limit = 50, offset = 0 } = args;
 
     const playlistTracks = await handleSpotifyRequest(async (spotifyApi) => {
       return await spotifyApi.playlists.getPlaylistItems(
@@ -258,6 +271,7 @@ const getPlaylistTracks: tool<{
         undefined,
         undefined,
         limit as MaxInt<50>,
+        offset,
       );
     });
 
@@ -265,7 +279,7 @@ const getPlaylistTracks: tool<{
       return {
         content: [
           {
-            type: 'text',
+            type: "text",
             text: "This playlist doesn't have any tracks",
           },
         ],
@@ -275,22 +289,22 @@ const getPlaylistTracks: tool<{
     const formattedTracks = playlistTracks.items
       .map((item, i) => {
         const { track } = item;
-        if (!track) return `${i + 1}. [Removed track]`;
+        if (!track) return `${i + 1 + offset}. [Removed track]`;
 
         if (isTrack(track)) {
-          const artists = track.artists.map((a) => a.name).join(', ');
+          const artists = track.artists.map((a) => a.name).join(", ");
           const duration = formatDuration(track.duration_ms);
-          return `${i + 1}. "${track.name}" by ${artists} (${duration}) - ID: ${track.id}`;
+          return `${i + 1 + offset}. "${track.name}" by ${artists} (${duration}) - ID: ${track.id}`;
         }
 
-        return `${i + 1}. Unknown item`;
+        return `${i + 1 + offset}. Unknown item`;
       })
-      .join('\n');
+      .join("\n");
 
     return {
       content: [
         {
-          type: 'text',
+          type: "text",
           text: `# Tracks in Playlist\n\n${formattedTracks}`,
         },
       ],
@@ -301,15 +315,15 @@ const getPlaylistTracks: tool<{
 const getRecentlyPlayed: tool<{
   limit: z.ZodOptional<z.ZodNumber>;
 }> = {
-  name: 'getRecentlyPlayed',
-  description: 'Get a list of recently played tracks on Spotify',
+  name: "getRecentlyPlayed",
+  description: "Get a list of recently played tracks on Spotify",
   schema: {
     limit: z
       .number()
       .min(1)
       .max(50)
       .optional()
-      .describe('Maximum number of tracks to return (1-50)'),
+      .describe("Maximum number of tracks to return (1-50)"),
   },
   handler: async (args, extra: SpotifyHandlerExtra) => {
     const { limit = 50 } = args;
@@ -324,7 +338,7 @@ const getRecentlyPlayed: tool<{
       return {
         content: [
           {
-            type: 'text',
+            type: "text",
             text: "You don't have any recently played tracks on Spotify",
           },
         ],
@@ -337,25 +351,25 @@ const getRecentlyPlayed: tool<{
         if (!track) return `${i + 1}. [Removed track]`;
 
         if (isTrack(track)) {
-          const artists = track.artists.map((a) => a.name).join(', ');
+          const artists = track.artists.map((a) => a.name).join(", ");
           const duration = formatDuration(track.duration_ms);
           return `${i + 1}. "${track.name}" by ${artists} (${duration}) - ID: ${track.id}`;
         }
 
         return `${i + 1}. Unknown item`;
       })
-      .join('\n');
+      .join("\n");
 
     return {
       content: [
         {
-          type: 'text',
+          type: "text",
           text: `# Recently Played Tracks\n\n${formattedHistory}`,
         },
       ],
     };
-  }
-}
+  },
+};
 
 export const readTools = [
   searchSpotify,
