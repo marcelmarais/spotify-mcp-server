@@ -8,11 +8,12 @@
   },
   "scripts": {
     "build": "tsc && node -e \"require('fs').chmodSync('build/index.js', '755')\"",
-    "auth": "tsc && node build/auth.js"
+    "auth": "tsc && node build/auth.js",
+    "lint": "biome check --diagnostic-level=warn --error-on-warnings",
+    "lint:fix": "biome check --write --unsafe --organize-imports-enabled=true",
+    "typecheck": "tsc --noEmit"
   },
-  "files": [
-    "build"
-  ],
+  "files": ["build"],
   "keywords": [],
   "author": "Marcel Marais",
   "description": "A Model Context Protocol server for Spotify integration",

@@ -1,9 +1,9 @@
-import { SpotifyApi } from '@spotify/web-api-ts-sdk';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
-import { fileURLToPath, URL } from 'node:url';
+import { URL, fileURLToPath } from 'node:url';
+import { SpotifyApi } from '@spotify/web-api-ts-sdk';
 import open from 'open';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -26,7 +26,7 @@ export function loadSpotifyConfig(): SpotifyConfig {
 
   try {
     const config = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
-    if (!config.clientId || !config.clientSecret || !config.redirectUri) {
+    if (!(config.clientId && config.clientSecret && config.redirectUri)) {
       throw new Error(
         'Spotify configuration must include clientId, clientSecret, and redirectUri.',
       );
@@ -160,7 +160,7 @@ export async function authorizeSpotify(): Promise<void> {
     'user-read-recently-played',
     'user-modify-playback-state',
     'user-read-playback-state',
-    'user-read-currently-playing'
+    'user-read-currently-playing',
   ];
 
   const authParams = new URLSearchParams({
@@ -256,7 +256,7 @@ export async function authorizeSpotify(): Promise<void> {
       );
       console.log('Opening browser for authorization...');
 
-      open(authorizationUrl).catch((error: Error) => {
+      open(authorizationUrl).catch((_error: Error) => {
         console.log(
           'Failed to open browser automatically. Please visit this URL to authorize:',
         );

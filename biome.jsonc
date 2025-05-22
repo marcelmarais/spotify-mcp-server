@@ -51,32 +51,46 @@
         "useKeyWithClickEvents": "off" // Disable keyboard event requirement with click events
       },
       "complexity": {
-        "noUselessStringConcat": "warn", // Not in recommended ruleset, turning on manually
-        "noForEach": "off", // forEach is too familiar to ban
-        "noUselessSwitchCase": "off", // Turned off due to developer preferences
-        "noUselessThisAlias": "off" // Turned off due to developer preferences
+        "noUselessStringConcat": "warn",
+        "noForEach": "off",
+        "noUselessSwitchCase": "off",
+        "noUselessThisAlias": "off",
+        "noUselessTernary": "error",
+        "useFlatMap": "error",
+        "useOptionalChain": "error",
+        "useSimplifiedLogicExpression": "error"
       },
       "correctness": {
-        "noUnusedImports": "warn", // Not in recommended ruleset, turning on manually
+        "noUnusedImports": "error",
         "useArrayLiterals": "warn", // Not in recommended ruleset, turning on manually
         "noNewSymbol": "warn", // Not in recommended ruleset, turning on manually
         "useJsxKeyInIterable": "off", // Rule is buggy, revisit later
         "useExhaustiveDependencies": "off", // Community feedback on this rule has been poor, we will continue with ESLint
-        "noUnnecessaryContinue": "off" // Turned off due to developer preferences
+        "noUnnecessaryContinue": "off", // Turned off due to developer preferences
+        "noUnusedVariables": "error"
       },
       "security": {
-        "noDangerouslySetInnerHtml": "off" // Covered by Conformance
+        "noDangerouslySetInnerHtml": "error"
       },
       "style": {
-        "useFragmentSyntax": "warn", // Not in recommended ruleset, turning on manually
-        "noYodaExpression": "warn", // Not in recommended ruleset, turning on manually
-        "useDefaultParameterLast": "warn", // Not in recommended ruleset, turning on manually
-        "useExponentiationOperator": "off", // Obscure and arguably not easily readable
-        "noUnusedTemplateLiteral": "off", // Stylistic opinion
-        "noUselessElse": "off" // Stylistic opinion
+        "useFragmentSyntax": "warn",
+        "noYodaExpression": "warn",
+        "useDefaultParameterLast": "warn",
+        "useExponentiationOperator": "off",
+        "noUnusedTemplateLiteral": "off",
+        "noUselessElse": "error",
+        "useImportType": "error",
+        "useSelfClosingElements": "error",
+        "useFilenamingConvention": {
+          "level": "error",
+          "options": {
+            "filenameCases": ["kebab-case", "export"],
+            "requireAscii": true
+          }
+        }
       },
       "suspicious": {
-        "noExplicitAny": "off" // We trust Vercelians to use any only when necessary
+        "noExplicitAny": "off"
       },
       "nursery": {
         "noStaticElementInteractions": "warn",
@@ -84,7 +98,8 @@
         "noDocumentImportInPage": "warn",
         "noDuplicateElseIf": "warn",
         "noIrregularWhitespace": "warn",
-        "useValidAutocomplete": "warn"
+        "useValidAutocomplete": "warn",
+        "useSortedClasses": "error"
       }
     }
   },
@@ -116,7 +131,7 @@
     "formatter": { "enabled": false },
     "linter": { "enabled": false }
   },
-  "organizeImports": { "enabled": false },
+  "organizeImports": { "enabled": true },
   "overrides": [
     // Playwright requires an object destructure, even if empty
     // https://github.com/microsoft/playwright/issues/30007
