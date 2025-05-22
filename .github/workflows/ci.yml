@@ -31,7 +31,7 @@ jobs:
         run: npm install
 
       - name: Run Biome linting
-        run: npm lint
+        run: npm run lint
 
       - name: Run TypeScript type checking
-        run: npm typecheck 
+        run: npm run typecheck 
