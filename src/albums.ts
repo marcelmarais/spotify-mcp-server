@@ -200,7 +200,6 @@ const getAlbumTracks: tool<{
   },
 };
 
-
 const getUsersSavedAlbums: tool<{
   limit: z.ZodOptional<z.ZodNumber>;
   offset: z.ZodOptional<z.ZodNumber>;
