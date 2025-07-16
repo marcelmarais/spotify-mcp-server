@@ -11,6 +11,7 @@ A lightweight [Model Context Protocol (MCP)](https://modelcontextprotocol.io) se
 - [Example Interactions](#example-interactions)
 - [Tools](#tools)
   - [Read Operations](#read-operations)
+  - [Album Operations](#album-operations)
   - [Play / Create Operations](#play--create-operations)
 - [Setup](#setup)
   - [Prerequisites](#prerequisites)
@@ -154,6 +155,68 @@ A lightweight [Model Context Protocol (MCP)](https://modelcontextprotocol.io) se
    - **Returns**: Success status
    - **Example**: `addToQueue({ uri: "spotify:track:6rqhFgbbKwnb9MLmUQDhG6" })`
    - **Alternative**: `addToQueue({ type: "track", id: "6rqhFgbbKwnb9MLmUQDhG6" })`
+   
+
+### Album Operations
+
+1. **getAlbum**
+
+   - **Description**: Get detailed information about a specific album by its Spotify ID
+   - **Parameters**:
+     - `albumId` (string): The Spotify ID of the album
+   - **Returns**: Album details including name, artists, release date, type, total tracks, and ID
+   - **Example**: `getAlbum("4aawyAB9vmqN3uQ7FjRGTy")`
+
+2. **getMultipleAlbums**
+
+   - **Description**: Get detailed information about multiple albums by their Spotify IDs (max 20)
+   - **Parameters**:
+     - `albumIds` (array): Array of Spotify album IDs (max 20)
+   - **Returns**: List of albums with their details
+   - **Example**: `getMultipleAlbums(["4aawyAB9vmqN3uQ7FjRGTy", "1DFixLWuPkv3KT3TnV35m3"])`
+
+3. **getAlbumTracks**
+
+   - **Description**: Get tracks from a specific album with pagination support
+   - **Parameters**:
+     - `albumId` (string): The Spotify ID of the album
+     - `limit` (number, optional): Maximum number of tracks to return (1-50, default: 20)
+     - `offset` (number, optional): Offset for pagination (0-based index, default: 0)
+   - **Returns**: List of tracks from the album with pagination info
+   - **Example**: `getAlbumTracks("4aawyAB9vmqN3uQ7FjRGTy", 10, 0)`
+
+4. **getUsersSavedAlbums**
+
+   - **Description**: Get albums saved in the user's "Your Music" library
+   - **Parameters**:
+     - `limit` (number, optional): Maximum number of albums to return (1-50, default: 20)
+     - `offset` (number, optional): Offset for pagination (0-based index, default: 0)
+   - **Returns**: List of saved albums with details and when they were added
+   - **Example**: `getUsersSavedAlbums({ limit: 20, offset: 0 })`
+
+5. **saveAlbumsForUser**
+
+   - **Description**: Save albums to the user's "Your Music" library
+   - **Parameters**:
+     - `albumIds` (array): Array of Spotify album IDs to save (max 20)
+   - **Returns**: Success status
+   - **Example**: `saveAlbumsForUser(["4aawyAB9vmqN3uQ7FjRGTy", "1DFixLWuPkv3KT3TnV35m3"])`
+
+6. **removeAlbumsForUser**
+
+   - **Description**: Remove albums from the user's "Your Music" library
+   - **Parameters**:
+     - `albumIds` (array): Array of Spotify album IDs to remove (max 20)
+   - **Returns**: Success status
+   - **Example**: `removeAlbumsForUser(["4aawyAB9vmqN3uQ7FjRGTy"])`
+
+7. **checkUsersSavedAlbums**
+
+   - **Description**: Check if albums are saved in the user's "Your Music" library
+   - **Parameters**:
+     - `albumIds` (array): Array of Spotify album IDs to check (max 20)
+   - **Returns**: Status of each album (saved or not saved)
+   - **Example**: `checkUsersSavedAlbums(["4aawyAB9vmqN3uQ7FjRGTy", "1DFixLWuPkv3KT3TnV35m3"])`
 
 ## Setup
 
