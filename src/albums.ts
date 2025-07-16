@@ -7,7 +7,8 @@ const getAlbum: tool<{
   albumId: z.ZodString;
 }> = {
   name: 'getAlbum',
-  description: 'Get detailed information about a specific album by its Spotify ID',
+  description:
+    'Get detailed information about a specific album by its Spotify ID',
   schema: {
     albumId: z.string().describe('The Spotify ID of the album'),
   },
@@ -28,13 +29,7 @@ const getAlbum: tool<{
         content: [
           {
             type: 'text',
-            text: `# Album Details\n\n` +
-              `**Name**: "${album.name}"\n` +
-              `**Artists**: ${artists}\n` +
-              `**Release Date**: ${releaseDate}\n` +
-              `**Type**: ${albumType}\n` +
-              `**Total Tracks**: ${totalTracks}\n` +
-              `**ID**: ${album.id}`,
+            text: `# Album Details\n\n**Name**: "${album.name}"\n**Artists**: ${artists}\n**Release Date**: ${releaseDate}\n**Type**: ${albumType}\n**Total Tracks**: ${totalTracks}\n**ID**: ${album.id}`,
           },
         ],
       };
@@ -57,9 +52,13 @@ const getMultipleAlbums: tool<{
   albumIds: z.ZodArray<z.ZodString>;
 }> = {
   name: 'getMultipleAlbums',
-  description: 'Get detailed information about multiple albums by their Spotify IDs (max 20)',
+  description:
+    'Get detailed information about multiple albums by their Spotify IDs (max 20)',
   schema: {
-    albumIds: z.array(z.string()).max(20).describe('Array of Spotify album IDs (max 20)'),
+    albumIds: z
+      .array(z.string())
+      .max(20)
+      .describe('Array of Spotify album IDs (max 20)'),
   },
   handler: async (args, _extra: SpotifyHandlerExtra) => {
     const { albumIds } = args;
@@ -94,7 +93,7 @@ const getMultipleAlbums: tool<{
       const formattedAlbums = albums
         .map((album, i) => {
           if (!album) return `${i + 1}. [Album not found]`;
-          
+
           const artists = album.artists.map((a) => a.name).join(', ');
           return `${i + 1}. "${album.name}" by ${artists} (${album.release_date}) - ${album.total_tracks} tracks - ID: ${album.id}`;
         })
@@ -171,7 +170,7 @@ const getAlbumTracks: tool<{
       const formattedTracks = tracks.items
         .map((track, i) => {
           if (!track) return `${i + 1}. [Track not found]`;
-          
+
           const artists = track.artists.map((a) => a.name).join(', ');
           const duration = formatDuration(track.duration_ms);
           return `${offset + i + 1}. "${track.name}" by ${artists} (${duration}) - ID: ${track.id}`;
@@ -226,6 +225,7 @@ const getNewReleases: tool<{
     try {
       const newReleases = await handleSpotifyRequest(async (spotifyApi) => {
         return await spotifyApi.browse.getNewReleases(
+          undefined,
           limit as MaxInt<50>,
           offset,
         );
@@ -245,7 +245,7 @@ const getNewReleases: tool<{
       const formattedAlbums = newReleases.albums.items
         .map((album, i) => {
           if (!album) return `${i + 1}. [Album not found]`;
-          
+
           const artists = album.artists.map((a) => a.name).join(', ');
           return `${offset + i + 1}. "${album.name}" by ${artists} (${album.release_date}) - ID: ${album.id}`;
         })
@@ -319,7 +319,7 @@ const getUsersSavedAlbums: tool<{
         .map((item, i) => {
           const album = item.album;
           if (!album) return `${i + 1}. [Album not found]`;
-          
+
           const artists = album.artists.map((a) => a.name).join(', ');
           const addedDate = new Date(item.added_at).toLocaleDateString();
           return `${offset + i + 1}. "${album.name}" by ${artists} (${album.release_date}) - ID: ${album.id} - Added: ${addedDate}`;
@@ -355,7 +355,10 @@ const saveAlbumsForUser: tool<{
   name: 'saveAlbumsForUser',
   description: 'Save albums to the user\'s "Your Music" library',
   schema: {
-    albumIds: z.array(z.string()).max(20).describe('Array of Spotify album IDs to save (max 20)'),
+    albumIds: z
+      .array(z.string())
+      .max(20)
+      .describe('Array of Spotify album IDs to save (max 20)'),
   },
   handler: async (args, _extra: SpotifyHandlerExtra) => {
     const { albumIds } = args;
@@ -405,7 +408,10 @@ const removeAlbumsForUser: tool<{
   name: 'removeAlbumsForUser',
   description: 'Remove albums from the user\'s "Your Music" library',
   schema: {
-    albumIds: z.array(z.string()).max(20).describe('Array of Spotify album IDs to remove (max 20)'),
+    albumIds: z
+      .array(z.string())
+      .max(20)
+      .describe('Array of Spotify album IDs to remove (max 20)'),
   },
   handler: async (args, _extra: SpotifyHandlerExtra) => {
     const { albumIds } = args;
@@ -423,7 +429,7 @@ const removeAlbumsForUser: tool<{
 
     try {
       await handleSpotifyRequest(async (spotifyApi) => {
-        return await spotifyApi.currentUser.albums.removeAlbums(albumIds);
+        return await spotifyApi.currentUser.albums.removeSavedAlbums(albumIds);
       });
 
       return {
@@ -455,7 +461,10 @@ const checkUsersSavedAlbums: tool<{
   name: 'checkUsersSavedAlbums',
   description: 'Check if albums are saved in the user\'s "Your Music" library',
   schema: {
-    albumIds: z.array(z.string()).max(20).describe('Array of Spotify album IDs to check (max 20)'),
+    albumIds: z
+      .array(z.string())
+      .max(20)
+      .describe('Array of Spotify album IDs to check (max 20)'),
   },
   handler: async (args, _extra: SpotifyHandlerExtra) => {
     const { albumIds } = args;
