@@ -361,8 +361,7 @@ const getUsersSavedTracks: tool<{
   offset: z.ZodOptional<z.ZodNumber>;
 }> = {
   name: 'getUsersSavedTracks',
-  description:
-    'Get a list of tracks saved in the user\'s "Liked Songs" library',
+  description: 'Get a list of tracks saved in the user\'s "Liked Songs" library',
   schema: {
     limit: z
       .number()
@@ -430,5 +429,6 @@ export const readTools = [
   getMyPlaylists,
   getPlaylistTracks,
   getRecentlyPlayed,
+  getUsersSavedTracks,
   getUsersSavedTracks,
 ];
