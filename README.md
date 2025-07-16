@@ -75,13 +75,15 @@ A lightweight [Model Context Protocol (MCP)](https://modelcontextprotocol.io) se
    - **Returns**: If tracks are found it returns a formatted list of recently played tracks else a message stating: "You don't have any recently played tracks on Spotify".
    - **Example**: `getRecentlyPlayed({ limit: 10 })`
 
-6. **getRecentlyPlayed**
+6. **getUsersSavedTracks**
 
-   - **Description**: Retrieves a list of recently played tracks from Spotify.
+   - **Description**: Get a list of tracks saved in the user's "Liked Songs" library
    - **Parameters**:
-     - `limit` (number, optional): A number specifying the maximum number of tracks to return.
-   - **Returns**: If tracks are found it returns a formatted list of recently played tracks else a message stating: "You don't have any recently played tracks on Spotify".
-   - **Example**: `getRecentlyPlayed({ limit: 10 })`
+     - `limit` (number, optional): Maximum number of tracks to return (1-50, default: 50)
+     - `offset` (number, optional): Offset for pagination (0-based index, default: 0)
+   - **Returns**: Formatted list of saved tracks with track names, artists, duration, track IDs, and when they were added to Liked Songs. Shows pagination info (e.g., "1-20 of 150").
+   - **Example**: `getUsersSavedTracks({ limit: 20, offset: 0 })`
+
 
 ### Play / Create Operations
 
