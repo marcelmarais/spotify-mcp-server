@@ -356,10 +356,79 @@ const getRecentlyPlayed: tool<{
   },
 };
 
+const getUsersSavedTracks: tool<{
+  limit: z.ZodOptional<z.ZodNumber>;
+  offset: z.ZodOptional<z.ZodNumber>;
+}> = {
+  name: 'getUsersSavedTracks',
+  description:
+    'Get a list of tracks saved in the user\'s "Liked Songs" library',
+  schema: {
+    limit: z
+      .number()
+      .min(1)
+      .max(50)
+      .optional()
+      .describe('Maximum number of tracks to return (1-50)'),
+    offset: z
+      .number()
+      .min(0)
+      .optional()
+      .describe('Offset for pagination (0-based index)'),
+  },
+  handler: async (args, _extra: SpotifyHandlerExtra) => {
+    const { limit = 50, offset = 0 } = args;
+
+    const savedTracks = await handleSpotifyRequest(async (spotifyApi) => {
+      return await spotifyApi.currentUser.tracks.savedTracks(
+        limit as MaxInt<50>,
+        offset,
+      );
+    });
+
+    if (savedTracks.items.length === 0) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: "You don't have any saved tracks in your Liked Songs",
+          },
+        ],
+      };
+    }
+
+    const formattedTracks = savedTracks.items
+      .map((item, i) => {
+        const track = item.track;
+        if (!track) return `${i + 1}. [Removed track]`;
+
+        if (isTrack(track)) {
+          const artists = track.artists.map((a) => a.name).join(', ');
+          const duration = formatDuration(track.duration_ms);
+          const addedDate = new Date(item.added_at).toLocaleDateString();
+          return `${offset + i + 1}. "${track.name}" by ${artists} (${duration}) - ID: ${track.id} - Added: ${addedDate}`;
+        }
+
+        return `${i + 1}. Unknown item`;
+      })
+      .join('\n');
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `# Your Liked Songs (${offset + 1}-${offset + savedTracks.items.length} of ${savedTracks.total})\n\n${formattedTracks}`,
+        },
+      ],
+    };
+  },
+};
+
 export const readTools = [
   searchSpotify,
   getNowPlaying,
   getMyPlaylists,
   getPlaylistTracks,
   getRecentlyPlayed,
+  getUsersSavedTracks,
 ];
