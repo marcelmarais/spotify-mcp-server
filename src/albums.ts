@@ -200,79 +200,6 @@ const getAlbumTracks: tool<{
   },
 };
 
-const getNewReleases: tool<{
-  limit: z.ZodOptional<z.ZodNumber>;
-  offset: z.ZodOptional<z.ZodNumber>;
-}> = {
-  name: 'getNewReleases',
-  description: 'Get a list of new album releases featured in Spotify',
-  schema: {
-    limit: z
-      .number()
-      .min(1)
-      .max(50)
-      .optional()
-      .describe('Maximum number of albums to return (1-50)'),
-    offset: z
-      .number()
-      .min(0)
-      .optional()
-      .describe('Offset for pagination (0-based index)'),
-  },
-  handler: async (args, _extra: SpotifyHandlerExtra) => {
-    const { limit = 20, offset = 0 } = args;
-
-    try {
-      const newReleases = await handleSpotifyRequest(async (spotifyApi) => {
-        return await spotifyApi.browse.getNewReleases(
-          undefined,
-          limit as MaxInt<50>,
-          offset,
-        );
-      });
-
-      if (newReleases.albums.items.length === 0) {
-        return {
-          content: [
-            {
-              type: 'text',
-              text: 'No new releases found',
-            },
-          ],
-        };
-      }
-
-      const formattedAlbums = newReleases.albums.items
-        .map((album, i) => {
-          if (!album) return `${i + 1}. [Album not found]`;
-
-          const artists = album.artists.map((a) => a.name).join(', ');
-          return `${offset + i + 1}. "${album.name}" by ${artists} (${album.release_date}) - ID: ${album.id}`;
-        })
-        .join('\n');
-
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `# New Releases (${offset + 1}-${offset + newReleases.albums.items.length} of ${newReleases.albums.total})\n\n${formattedAlbums}`,
-          },
-        ],
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Error getting new releases: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          },
-        ],
-      };
-    }
-  },
-};
 
 const getUsersSavedAlbums: tool<{
   limit: z.ZodOptional<z.ZodNumber>;
@@ -519,7 +446,6 @@ export const albumTools = [
   getAlbum,
   getMultipleAlbums,
   getAlbumTracks,
-  getNewReleases,
   getUsersSavedAlbums,
   saveAlbumsForUser,
   removeAlbumsForUser,
