@@ -3,67 +3,22 @@ import { z } from 'zod';
 import type { SpotifyHandlerExtra, tool } from './types.js';
 import { formatDuration, handleSpotifyRequest } from './utils.js';
 
-const getAlbum: tool<{
-  albumId: z.ZodString;
+const getAlbums: tool<{
+  albumIds: z.ZodUnion<[z.ZodString, z.ZodArray<z.ZodString>]>;
 }> = {
-  name: 'getAlbum',
+  name: 'getAlbums',
   description:
-    'Get detailed information about a specific album by its Spotify ID',
-  schema: {
-    albumId: z.string().describe('The Spotify ID of the album'),
-  },
-  handler: async (args, _extra: SpotifyHandlerExtra) => {
-    const { albumId } = args;
-
-    try {
-      const album = await handleSpotifyRequest(async (spotifyApi) => {
-        return await spotifyApi.albums.get(albumId);
-      });
-
-      const artists = album.artists.map((a) => a.name).join(', ');
-      const releaseDate = album.release_date;
-      const totalTracks = album.total_tracks;
-      const albumType = album.album_type;
-
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `# Album Details\n\n**Name**: "${album.name}"\n**Artists**: ${artists}\n**Release Date**: ${releaseDate}\n**Type**: ${albumType}\n**Total Tracks**: ${totalTracks}\n**ID**: ${album.id}`,
-          },
-        ],
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Error getting album: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          },
-        ],
-      };
-    }
-  },
-};
-
-const getMultipleAlbums: tool<{
-  albumIds: z.ZodArray<z.ZodString>;
-}> = {
-  name: 'getMultipleAlbums',
-  description:
-    'Get detailed information about multiple albums by their Spotify IDs (max 20)',
+    'Get detailed information about one or more albums by their Spotify IDs',
   schema: {
     albumIds: z
-      .array(z.string())
-      .max(20)
-      .describe('Array of Spotify album IDs (max 20)'),
+      .union([z.string(), z.array(z.string()).max(20)])
+      .describe('A single album ID or array of album IDs (max 20)'),
   },
   handler: async (args, _extra: SpotifyHandlerExtra) => {
     const { albumIds } = args;
+    const ids = Array.isArray(albumIds) ? albumIds : [albumIds];
 
-    if (albumIds.length === 0) {
+    if (ids.length === 0) {
       return {
         content: [
           {
@@ -76,7 +31,9 @@ const getMultipleAlbums: tool<{
 
     try {
       const albums = await handleSpotifyRequest(async (spotifyApi) => {
-        return await spotifyApi.albums.get(albumIds);
+        return ids.length === 1
+          ? [await spotifyApi.albums.get(ids[0])]
+          : await spotifyApi.albums.get(ids);
       });
 
       if (albums.length === 0) {
@@ -85,6 +42,23 @@ const getMultipleAlbums: tool<{
             {
               type: 'text',
               text: 'No albums found for the provided IDs',
+            },
+          ],
+        };
+      }
+
+      if (albums.length === 1) {
+        const album = albums[0];
+        const artists = album.artists.map((a) => a.name).join(', ');
+        const releaseDate = album.release_date;
+        const totalTracks = album.total_tracks;
+        const albumType = album.album_type;
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `# Album Details\n\n**Name**: "${album.name}"\n**Artists**: ${artists}\n**Release Date**: ${releaseDate}\n**Type**: ${albumType}\n**Total Tracks**: ${totalTracks}\n**ID**: ${album.id}`,
             },
           ],
         };
@@ -200,94 +174,23 @@ const getAlbumTracks: tool<{
   },
 };
 
-const getUsersSavedAlbums: tool<{
-  limit: z.ZodOptional<z.ZodNumber>;
-  offset: z.ZodOptional<z.ZodNumber>;
-}> = {
-  name: 'getUsersSavedAlbums',
-  description: 'Get albums saved in the user\'s "Your Music" library',
-  schema: {
-    limit: z
-      .number()
-      .min(1)
-      .max(50)
-      .optional()
-      .describe('Maximum number of albums to return (1-50)'),
-    offset: z
-      .number()
-      .min(0)
-      .optional()
-      .describe('Offset for pagination (0-based index)'),
-  },
-  handler: async (args, _extra: SpotifyHandlerExtra) => {
-    const { limit = 20, offset = 0 } = args;
-
-    try {
-      const savedAlbums = await handleSpotifyRequest(async (spotifyApi) => {
-        return await spotifyApi.currentUser.albums.savedAlbums(
-          limit as MaxInt<50>,
-          offset,
-        );
-      });
-
-      if (savedAlbums.items.length === 0) {
-        return {
-          content: [
-            {
-              type: 'text',
-              text: "You don't have any saved albums in your library",
-            },
-          ],
-        };
-      }
-
-      const formattedAlbums = savedAlbums.items
-        .map((item, i) => {
-          const album = item.album;
-          if (!album) return `${i + 1}. [Album not found]`;
-
-          const artists = album.artists.map((a) => a.name).join(', ');
-          const addedDate = new Date(item.added_at).toLocaleDateString();
-          return `${offset + i + 1}. "${album.name}" by ${artists} (${album.release_date}) - ID: ${album.id} - Added: ${addedDate}`;
-        })
-        .join('\n');
-
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `# Your Saved Albums (${offset + 1}-${offset + savedAlbums.items.length} of ${savedAlbums.total})\n\n${formattedAlbums}`,
-          },
-        ],
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Error getting saved albums: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          },
-        ],
-      };
-    }
-  },
-};
-
-const saveAlbumsForUser: tool<{
+const saveOrRemoveAlbumForUser: tool<{
   albumIds: z.ZodArray<z.ZodString>;
+  action: z.ZodEnum<['save', 'remove']>;
 }> = {
-  name: 'saveAlbumsForUser',
-  description: 'Save albums to the user\'s "Your Music" library',
+  name: 'saveOrRemoveAlbumForUser',
+  description: 'Save or remove albums from the user\'s "Your Music" library',
   schema: {
     albumIds: z
       .array(z.string())
       .max(20)
-      .describe('Array of Spotify album IDs to save (max 20)'),
+      .describe('Array of Spotify album IDs (max 20)'),
+    action: z
+      .enum(['save', 'remove'])
+      .describe('Action to perform: save or remove albums'),
   },
   handler: async (args, _extra: SpotifyHandlerExtra) => {
-    const { albumIds } = args;
+    const { albumIds, action } = args;
 
     if (albumIds.length === 0) {
       return {
@@ -302,14 +205,19 @@ const saveAlbumsForUser: tool<{
 
     try {
       await handleSpotifyRequest(async (spotifyApi) => {
-        return await spotifyApi.currentUser.albums.saveAlbums(albumIds);
+        return action === 'save'
+          ? await spotifyApi.currentUser.albums.saveAlbums(albumIds)
+          : await spotifyApi.currentUser.albums.removeSavedAlbums(albumIds);
       });
+
+      const actionPastTense = action === 'save' ? 'saved' : 'removed';
+      const preposition = action === 'save' ? 'to' : 'from';
 
       return {
         content: [
           {
             type: 'text',
-            text: `Successfully saved ${albumIds.length} album${albumIds.length === 1 ? '' : 's'} to your library`,
+            text: `Successfully ${actionPastTense} ${albumIds.length} album${albumIds.length === 1 ? '' : 's'} ${preposition} your library`,
           },
         ],
       };
@@ -318,60 +226,7 @@ const saveAlbumsForUser: tool<{
         content: [
           {
             type: 'text',
-            text: `Error saving albums: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          },
-        ],
-      };
-    }
-  },
-};
-
-const removeAlbumsForUser: tool<{
-  albumIds: z.ZodArray<z.ZodString>;
-}> = {
-  name: 'removeAlbumsForUser',
-  description: 'Remove albums from the user\'s "Your Music" library',
-  schema: {
-    albumIds: z
-      .array(z.string())
-      .max(20)
-      .describe('Array of Spotify album IDs to remove (max 20)'),
-  },
-  handler: async (args, _extra: SpotifyHandlerExtra) => {
-    const { albumIds } = args;
-
-    if (albumIds.length === 0) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: 'Error: No album IDs provided',
-          },
-        ],
-      };
-    }
-
-    try {
-      await handleSpotifyRequest(async (spotifyApi) => {
-        return await spotifyApi.currentUser.albums.removeSavedAlbums(albumIds);
-      });
-
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Successfully removed ${albumIds.length} album${albumIds.length === 1 ? '' : 's'} from your library`,
-          },
-        ],
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Error removing albums: ${
+            text: `Error ${action === 'save' ? 'saving' : 'removing'} albums: ${
               error instanceof Error ? error.message : String(error)
             }`,
           },
@@ -442,11 +297,8 @@ const checkUsersSavedAlbums: tool<{
 };
 
 export const albumTools = [
-  getAlbum,
-  getMultipleAlbums,
+  getAlbums,
   getAlbumTracks,
-  getUsersSavedAlbums,
-  saveAlbumsForUser,
-  removeAlbumsForUser,
+  saveOrRemoveAlbumForUser,
   checkUsersSavedAlbums,
 ];
