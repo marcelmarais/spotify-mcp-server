@@ -431,5 +431,4 @@ export const readTools = [
   getPlaylistTracks,
   getRecentlyPlayed,
   getUsersSavedTracks,
-  getUsersSavedTracks,
 ];
