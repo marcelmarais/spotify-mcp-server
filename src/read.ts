@@ -1,6 +1,11 @@
 import type { MaxInt } from '@spotify/web-api-ts-sdk';
 import { z } from 'zod';
-import type { SpotifyHandlerExtra, SpotifyTrack, tool } from './types.js';
+import {
+  playableTypes,
+  type SpotifyHandlerExtra,
+  type SpotifyTrack,
+  type tool,
+} from './types.js';
 import { formatDuration, handleSpotifyRequest } from './utils.js';
 
 function isTrack(item: any): item is SpotifyTrack {
@@ -15,7 +20,7 @@ function isTrack(item: any): item is SpotifyTrack {
 
 const searchSpotify: tool<{
   query: z.ZodString;
-  type: z.ZodEnum<['track', 'album', 'artist', 'playlist']>;
+  type: z.ZodType<string>;
   limit: z.ZodOptional<z.ZodNumber>;
 }> = {
   name: 'searchSpotify',
@@ -23,7 +28,7 @@ const searchSpotify: tool<{
   schema: {
     query: z.string().describe('The search query'),
     type: z
-      .enum(['track', 'album', 'artist', 'playlist'])
+      .enum(playableTypes)
       .describe(
         'The type of item to search for either track, album, artist, or playlist',
       ),
@@ -42,7 +47,7 @@ const searchSpotify: tool<{
       const results = await handleSpotifyRequest(async (spotifyApi) => {
         return await spotifyApi.search(
           query,
-          [type],
+          [type as (typeof playableTypes)[number]],
           undefined,
           limitValue as MaxInt<50>,
         );
