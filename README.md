@@ -11,6 +11,7 @@ A lightweight [Model Context Protocol (MCP)](https://modelcontextprotocol.io) se
 - [Example Interactions](#example-interactions)
 - [Tools](#tools)
   - [Read Operations](#read-operations)
+  - [Album Operations](#album-operations)
   - [Play / Create Operations](#play--create-operations)
 - [Setup](#setup)
   - [Prerequisites](#prerequisites)
@@ -154,6 +155,44 @@ A lightweight [Model Context Protocol (MCP)](https://modelcontextprotocol.io) se
    - **Returns**: Success status
    - **Example**: `addToQueue({ uri: "spotify:track:6rqhFgbbKwnb9MLmUQDhG6" })`
    - **Alternative**: `addToQueue({ type: "track", id: "6rqhFgbbKwnb9MLmUQDhG6" })`
+   
+
+### Album Operations
+
+1. **getAlbums**
+
+   - **Description**: Get detailed information about one or more albums by their Spotify IDs
+   - **Parameters**:
+     - `albumIds` (string|array): A single album ID or array of album IDs (max 20)
+   - **Returns**: Album details including name, artists, release date, type, total tracks, and ID. For single album returns detailed view, for multiple albums returns summary list.
+   - **Example**: `getAlbums("4aawyAB9vmqN3uQ7FjRGTy")` or `getAlbums(["4aawyAB9vmqN3uQ7FjRGTy", "1DFixLWuPkv3KT3TnV35m3"])`
+
+2. **getAlbumTracks**
+
+   - **Description**: Get tracks from a specific album with pagination support
+   - **Parameters**:
+     - `albumId` (string): The Spotify ID of the album
+     - `limit` (number, optional): Maximum number of tracks to return (1-50)
+     - `offset` (number, optional): Offset for pagination (0-based index)
+   - **Returns**: List of tracks from the album with track names, artists, duration, and IDs. Shows pagination info.
+   - **Example**: `getAlbumTracks("4aawyAB9vmqN3uQ7FjRGTy", 10, 0)`
+
+3. **saveOrRemoveAlbumForUser**
+
+   - **Description**: Save or remove albums from the user's "Your Music" library
+   - **Parameters**:
+     - `albumIds` (array): Array of Spotify album IDs (max 20)
+     - `action` (string): Action to perform: "save" or "remove"
+   - **Returns**: Success status with confirmation message
+   - **Example**: `saveOrRemoveAlbumForUser(["4aawyAB9vmqN3uQ7FjRGTy"], "save")`
+
+4. **checkUsersSavedAlbums**
+
+   - **Description**: Check if albums are saved in the user's "Your Music" library
+   - **Parameters**:
+     - `albumIds` (array): Array of Spotify album IDs to check (max 20)
+   - **Returns**: Status of each album (saved or not saved)
+   - **Example**: `checkUsersSavedAlbums(["4aawyAB9vmqN3uQ7FjRGTy", "1DFixLWuPkv3KT3TnV35m3"])`
 
 ## Setup
 
