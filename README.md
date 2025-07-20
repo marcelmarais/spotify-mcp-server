@@ -181,7 +181,7 @@ npm run build
 5. Accept the Terms of Service and click "Create"
 6. In your new app's dashboard, you'll see your **Client ID**
 7. Click "Show Client Secret" to reveal your **Client Secret**
-8. Click "Edit Settings" and add a Redirect URI (e.g., `http://localhost:8888/callback`)
+8. Click "Edit Settings" and add a Redirect URI (e.g., `http://127.0.0.1:8888/callback`)
 9. Save your changes
 
 ### Spotify API Configuration
@@ -199,7 +199,7 @@ Then edit the file with your credentials:
 {
   "clientId": "your-client-id",
   "clientSecret": "your-client-secret",
-  "redirectUri": "http://localhost:8888/callback"
+  "redirectUri": "http://127.0.0.1:8888/callback"
 }
 ```
 
