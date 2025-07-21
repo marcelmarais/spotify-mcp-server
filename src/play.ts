@@ -1,10 +1,10 @@
 import { z } from 'zod';
-import type { SpotifyHandlerExtra, tool } from './types.js';
+import { playableTypes, type SpotifyHandlerExtra, type tool } from './types.js';
 import { handleSpotifyRequest } from './utils.js';
 
 const playMusic: tool<{
   uri: z.ZodOptional<z.ZodString>;
-  type: z.ZodOptional<z.ZodEnum<['track', 'album', 'artist', 'playlist']>>;
+  type: z.ZodOptional<z.ZodType<string>>;
   id: z.ZodOptional<z.ZodString>;
   deviceId: z.ZodOptional<z.ZodString>;
 }> = {
@@ -15,10 +15,7 @@ const playMusic: tool<{
       .string()
       .optional()
       .describe('The Spotify URI to play (overrides type and id)'),
-    type: z
-      .enum(['track', 'album', 'artist', 'playlist'])
-      .optional()
-      .describe('The type of item to play'),
+    type: z.enum(playableTypes).optional().describe('The type of item to play'),
     id: z.string().optional().describe('The Spotify ID of the item to play'),
     deviceId: z
       .string()
@@ -300,7 +297,7 @@ const resumePlayback: tool<{
 
 const addToQueue: tool<{
   uri: z.ZodOptional<z.ZodString>;
-  type: z.ZodOptional<z.ZodEnum<['track', 'album', 'artist', 'playlist']>>;
+  type: z.ZodOptional<z.ZodType<string>>;
   id: z.ZodOptional<z.ZodString>;
   deviceId: z.ZodOptional<z.ZodString>;
 }> = {
@@ -311,10 +308,7 @@ const addToQueue: tool<{
       .string()
       .optional()
       .describe('The Spotify URI to play (overrides type and id)'),
-    type: z
-      .enum(['track', 'album', 'artist', 'playlist'])
-      .optional()
-      .describe('The type of item to play'),
+    type: z.enum(playableTypes).optional().describe('The type of item to play'),
     id: z.string().optional().describe('The Spotify ID of the item to play'),
     deviceId: z
       .string()
