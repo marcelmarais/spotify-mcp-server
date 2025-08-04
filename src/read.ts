@@ -236,6 +236,7 @@ const getMyPlaylists: tool<{
 const getPlaylistTracks: tool<{
   playlistId: z.ZodString;
   limit: z.ZodOptional<z.ZodNumber>;
+  offset: z.ZodOptional<z.ZodNumber>;
 }> = {
   name: 'getPlaylistTracks',
   description: 'Get a list of tracks in a Spotify playlist',
@@ -247,9 +248,14 @@ const getPlaylistTracks: tool<{
       .max(50)
       .optional()
       .describe('Maximum number of tracks to return (1-50)'),
+    offset: z
+      .number()
+      .min(0)
+      .optional()
+      .describe('Offset for pagination (0-based index)'),
   },
   handler: async (args, _extra: SpotifyHandlerExtra) => {
-    const { playlistId, limit = 50 } = args;
+    const { playlistId, limit = 50, offset = 0 } = args;
 
     const playlistTracks = await handleSpotifyRequest(async (spotifyApi) => {
       return await spotifyApi.playlists.getPlaylistItems(
@@ -257,6 +263,7 @@ const getPlaylistTracks: tool<{
         undefined,
         undefined,
         limit as MaxInt<50>,
+        offset,
       );
     });
 
@@ -274,15 +281,15 @@ const getPlaylistTracks: tool<{
     const formattedTracks = playlistTracks.items
       .map((item, i) => {
         const { track } = item;
-        if (!track) return `${i + 1}. [Removed track]`;
+        if (!track) return `${offset + i + 1}. [Removed track]`;
 
         if (isTrack(track)) {
           const artists = track.artists.map((a) => a.name).join(', ');
           const duration = formatDuration(track.duration_ms);
-          return `${i + 1}. "${track.name}" by ${artists} (${duration}) - ID: ${track.id}`;
+          return `${offset + i + 1}. "${track.name}" by ${artists} (${duration}) - ID: ${track.id}`;
         }
 
-        return `${i + 1}. Unknown item`;
+        return `${offset + i + 1}. Unknown item`;
       })
       .join('\n');
 
@@ -290,7 +297,7 @@ const getPlaylistTracks: tool<{
       content: [
         {
           type: 'text',
-          text: `# Tracks in Playlist\n\n${formattedTracks}`,
+          text: `# Tracks in Playlist (${offset + 1}-${offset + playlistTracks.items.length} of ${playlistTracks.total})\n\n${formattedTracks}`,
         },
       ],
     };
