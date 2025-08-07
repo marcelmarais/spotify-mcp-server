@@ -1,7 +1,7 @@
 {
   "clientId": "your-client-id",
   "clientSecret": "your-client-secret",
-  "redirectUri": "http://localhost:8888/callback",
+  "redirectUri": "http://127.0.0.1:8888/callback",
   "accessToken": "run-npm auth to get this",
   "refreshToken": "run-npm auth to get this"
 }
