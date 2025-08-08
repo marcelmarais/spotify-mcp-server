@@ -10,6 +10,16 @@ export type SpotifyHandlerExtra = RequestHandlerExtra<
   ServerNotification
 >;
 
+export const playableTypes = [
+  'track',
+  'album',
+  'artist',
+  'playlist',
+  'show',
+  'episode',
+  'audiobook',
+] as const;
+
 export type tool<Args extends z.ZodRawShape> = {
   name: string;
   description: string;
