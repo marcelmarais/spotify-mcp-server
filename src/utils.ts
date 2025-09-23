@@ -116,11 +116,69 @@ async function exchangeCodeForToken(
     throw new Error(`Failed to exchange code for token: ${errorData}`);
   }
 
+  // If the response is empty, there's nothing to parse
+  if (response.status === 204 || response.headers.get('Content-Length') === '0') {
+    // biome-ignore lint/suspicious/noExplicitAny: <explanation>
+    return {} as any;
+  }
   const data = await response.json();
   return {
     access_token: data.access_token,
     refresh_token: data.refresh_token,
   };
+}
+
+async function refreshAccessToken(): Promise<void> {
+  const config = loadSpotifyConfig();
+  const tokenUrl = 'https://accounts.spotify.com/api/token';
+  const authHeader = `Basic ${base64Encode(
+    `${config.clientId}:${config.clientSecret}`,
+  )}`;
+
+  if (!config.refreshToken) {
+    throw new Error('No refresh token available. Please re-authenticate.');
+  }
+
+  const params = new URLSearchParams();
+  params.append('grant_type', 'refresh_token');
+  params.append('refresh_token', config.refreshToken);
+
+  const response = await fetch(tokenUrl, {
+    method: 'POST',
+    headers: {
+      Authorization: authHeader,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: params,
+  });
+
+  if (!response.ok) {
+    const errorData = await response.text();
+    // If refresh fails, it's likely the user needs to re-authorize completely.
+    if (response.status === 400) {
+      console.error(
+        'Refresh token is invalid. Please run the authentication flow again.',
+      );
+      // Here you might want to trigger the full re-authentication flow.
+      // For now, we'll just throw, which will likely require a manual restart of auth.
+    }
+    throw new Error(`Failed to refresh access token: ${errorData}`);
+  }
+
+  // If the response is empty, there's nothing to parse
+  if (response.status === 204 || response.headers.get('Content-Length') === '0') {
+    // biome-ignore lint/suspicious/noExplicitAny: <explanation>
+    return {} as any;
+  }
+
+  const data = await response.json();
+  config.accessToken = data.access_token;
+  // Spotify might issue a new refresh token, so we should save it.
+  if (data.refresh_token) {
+    config.refreshToken = data.refresh_token;
+  }
+  saveSpotifyConfig(config);
+  cachedSpotifyApi = null; // Invalidate the cached API client
 }
 
 export async function authorizeSpotify(): Promise<void> {
@@ -255,6 +313,10 @@ export async function authorizeSpotify(): Promise<void> {
         `Listening for Spotify authentication callback on port ${port}`,
       );
       console.log('Opening browser for authorization...');
+      console.log(
+        'If your browser does not open automatically, please visit this URL:',
+      );
+      console.log(authorizationUrl);
 
       open(authorizationUrl).catch((_error: Error) => {
         console.log(
@@ -286,16 +348,57 @@ export async function handleSpotifyRequest<T>(
     const spotifyApi = createSpotifyApi();
     return await action(spotifyApi);
   } catch (error) {
-    // Skip JSON parsing errors as these are actually successful operations
     const errorMessage = error instanceof Error ? error.message : String(error);
+
+    // This is a brittle check. A better solution would be to check the error code if the API provides one.
     if (
-      errorMessage.includes('Unexpected token') ||
-      errorMessage.includes('Unexpected non-whitespace character') ||
-      errorMessage.includes('Exponent part is missing a number in JSON')
+      errorMessage.includes('Bad or expired token') ||
+      errorMessage.includes('Permissions missing') // Also handle token revocation
     ) {
-      return undefined as T;
+      console.log('Spotify access token expired or invalid, refreshing...');
+      try {
+        await refreshAccessToken();
+        const spotifyApi = createSpotifyApi(); // Re-create with the new token
+        return await action(spotifyApi);
+      } catch (refreshError) {
+        console.error('Failed to refresh Spotify token:', refreshError);
+        throw new Error(
+          'Could not refresh Spotify token. Please try authenticating again.',
+        );
+      }
     }
+
     // Rethrow other errors
     throw error;
+  }
+}
+
+// Returns a valid access token string for direct REST calls.
+// Falls back to refresh flow on token errors.
+export async function getAccessTokenString(): Promise<string> {
+  try {
+    const spotifyApi = createSpotifyApi();
+    // authenticationStrategy is not part of public API types; use any to access it.
+    // biome-ignore lint/suspicious/noExplicitAny: access internal field for practicality
+    const authStrategy: any = (spotifyApi as any).authenticationStrategy;
+    if (!authStrategy || typeof authStrategy.getOrCreateAccessToken !== 'function') {
+      throw new Error('Authentication strategy unavailable');
+    }
+    const tokenObj = await authStrategy.getOrCreateAccessToken();
+    if (!tokenObj || !tokenObj.access_token) {
+      throw new Error('No access token returned');
+    }
+    return tokenObj.access_token as string;
+  } catch (error) {
+    // Attempt to refresh and retry once
+    await refreshAccessToken();
+    const spotifyApi = createSpotifyApi();
+    // biome-ignore lint/suspicious/noExplicitAny: access internal field for practicality
+    const authStrategy: any = (spotifyApi as any).authenticationStrategy;
+    const tokenObj = await authStrategy.getOrCreateAccessToken();
+    if (!tokenObj || !tokenObj.access_token) {
+      throw new Error('Failed to obtain access token after refresh');
+    }
+    return tokenObj.access_token as string;
   }
 }

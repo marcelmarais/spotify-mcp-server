@@ -277,7 +277,9 @@ npm run auth
 
 ## Integrating with Claude Desktop, Cursor, and VsCode [Via Cline model extension](https://marketplace.visualstudio.com/items/?itemName=saoudrizwan.claude-dev)
 
-To use your MCP server with Claude Desktop, add it to your Claude configuration:
+### Claude Desktop
+
+To use your MCP server with Claude Desktop, add it to your Claude configuration file (usually located at `~/.claude_desktop_config.json`):
 
 ```json
 {
@@ -290,13 +292,17 @@ To use your MCP server with Claude Desktop, add it to your Claude configuration:
 }
 ```
 
+### Cursor
+
 For Cursor, go to the MCP tab in `Cursor Settings` (command + shift + J). Add a server with this command:
 
 ```bash
-node path/to/spotify-mcp-server/build/index.js
+node /path/to/spotify-mcp-server/build/index.js
 ```
 
-To set up your MCP correctly with Cline ensure you have the following file configuration set `cline_mcp_settings.json`:
+### Cline (VS Code Extension)
+
+To set up your MCP correctly with Cline, ensure you have the following file configuration set in `cline_mcp_settings.json`:
 
 ```json
 {
@@ -304,10 +310,20 @@ To set up your MCP correctly with Cline ensure you have the following file confi
     "spotify": {
       "command": "node",
       "args": ["~/../spotify-mcp-server/build/index.js"],
-      "autoApprove": ["getListeningHistory", "getNowPlaying"]
+      "autoApprove": ["getNowPlaying", "getDevices", "searchSpotify"]
     }
   }
 }
 ```
 
 You can add additional tools to the auto approval array to run the tools without intervention.
+
+### Running the Server
+
+After building the project with `npm run build`, you can start the MCP server with:
+
+```bash
+npm start
+```
+
+The server will run on stdio and communicate with MCP clients through JSON-RPC messages.
