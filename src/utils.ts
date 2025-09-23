@@ -372,3 +372,33 @@ export async function handleSpotifyRequest<T>(
     throw error;
   }
 }
+
+// Returns a valid access token string for direct REST calls.
+// Falls back to refresh flow on token errors.
+export async function getAccessTokenString(): Promise<string> {
+  try {
+    const spotifyApi = createSpotifyApi();
+    // authenticationStrategy is not part of public API types; use any to access it.
+    // biome-ignore lint/suspicious/noExplicitAny: access internal field for practicality
+    const authStrategy: any = (spotifyApi as any).authenticationStrategy;
+    if (!authStrategy || typeof authStrategy.getOrCreateAccessToken !== 'function') {
+      throw new Error('Authentication strategy unavailable');
+    }
+    const tokenObj = await authStrategy.getOrCreateAccessToken();
+    if (!tokenObj || !tokenObj.access_token) {
+      throw new Error('No access token returned');
+    }
+    return tokenObj.access_token as string;
+  } catch (error) {
+    // Attempt to refresh and retry once
+    await refreshAccessToken();
+    const spotifyApi = createSpotifyApi();
+    // biome-ignore lint/suspicious/noExplicitAny: access internal field for practicality
+    const authStrategy: any = (spotifyApi as any).authenticationStrategy;
+    const tokenObj = await authStrategy.getOrCreateAccessToken();
+    if (!tokenObj || !tokenObj.access_token) {
+      throw new Error('Failed to obtain access token after refresh');
+    }
+    return tokenObj.access_token as string;
+  }
+}

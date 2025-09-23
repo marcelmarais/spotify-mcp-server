@@ -1,7 +1,51 @@
 import { z } from 'zod';
 import type { SpotifyHandlerExtra, tool } from './types.js';
-import { handleSpotifyRequest } from './utils.js';
+import { handleSpotifyRequest, createSpotifyApi, getAccessTokenString } from './utils.js';
 import { getRecommendations } from './read.js';
+
+const setShuffle: tool<{
+	state: z.ZodBoolean;
+	deviceId: z.ZodOptional<z.ZodString>;
+}> = {
+	name: 'setShuffle',
+	description:
+		'Enable or disable shuffle mode on the active device (PUT /v1/me/player/shuffle)',
+	schema: {
+		state: z.boolean().describe('Whether to enable (true) or disable (false) shuffle'),
+		deviceId: z
+			.string()
+			.optional()
+			.describe('The Spotify device ID to apply shuffle on'),
+	},
+	handler: async (args, _extra: SpotifyHandlerExtra) => {
+		const { state, deviceId } = args;
+
+		// Call Spotify REST directly and ignore body (204 expected)
+		const token = await getAccessTokenString();
+		const params = new URLSearchParams({ state: String(state) });
+		if (deviceId) params.append('device_id', deviceId);
+		const url = `https://api.spotify.com/v1/me/player/shuffle?${params.toString()}`;
+		try {
+			await fetch(url, {
+				method: 'PUT',
+				headers: {
+					Authorization: `Bearer ${token}`,
+				},
+			});
+		} catch (_err) {
+			// Intentionally ignore non-JSON or empty-body responses and network hiccups.
+		}
+
+		return {
+			content: [
+				{
+					type: 'text',
+					text: `Shuffle ${state ? 'enabled' : 'disabled'}`,
+				},
+			],
+		};
+	},
+};
 
 const playMusic: tool<{
 	uri: z.ZodOptional<z.ZodString>;
@@ -453,4 +497,5 @@ export const playTools = [
 	addTracksToPlaylist,
 	resumePlayback,
 	addToQueue,
+	setShuffle,
 ];
