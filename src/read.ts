@@ -525,8 +525,6 @@ const getQueue: tool<{
   },
 };
 
-
-
 export const readTools = [
   searchSpotify,
   getNowPlaying,
