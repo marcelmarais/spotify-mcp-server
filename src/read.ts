@@ -431,6 +431,100 @@ const getUsersSavedTracks: tool<{
   },
 };
 
+const getQueue: tool<{
+  limit: z.ZodOptional<z.ZodNumber>;
+}> = {
+  name: 'getQueue',
+  description:
+    'Get a list of the currently playing track and the next items in your Spotify queue',
+  schema: {
+    limit: z
+      .number()
+      .min(1)
+      .max(50)
+      .optional()
+      .describe('Maximum number of upcoming items to show (1-50)'),
+  },
+  handler: async (args, _extra: SpotifyHandlerExtra) => {
+    const { limit = 10 } = args;
+
+    try {
+      const queue = await handleSpotifyRequest(async (spotifyApi) => {
+        return await spotifyApi.player.getUsersQueue();
+      });
+
+      const current = (queue as any)?.currently_playing;
+      const upcoming = ((queue as any)?.queue ?? []) as any[];
+
+      const header = '# Spotify Queue\n\n';
+
+      let currentText = 'Nothing is currently playing';
+      if (current) {
+        const name = current?.name ?? 'Unknown';
+        const artists = Array.isArray(current?.artists)
+          ? (current.artists as Array<{ name: string }>)
+              .map((a) => a.name)
+              .join(', ')
+          : 'Unknown';
+        const duration =
+          typeof current?.duration_ms === 'number'
+            ? formatDuration(current.duration_ms)
+            : 'Unknown';
+        currentText = `Currently Playing: "${name}" by ${artists} (${duration})`;
+      }
+
+      if (upcoming.length === 0) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `${header}${currentText}\n\nNo upcoming items in the queue`,
+            },
+          ],
+        };
+      }
+
+      const toShow = upcoming.slice(0, limit);
+      const formatted = toShow
+        .map((track, i) => {
+          const name = track?.name ?? 'Unknown';
+          const artists = Array.isArray(track?.artists)
+            ? (track.artists as Array<{ name: string }>)
+                .map((a) => a.name)
+                .join(', ')
+            : 'Unknown';
+          const duration =
+            typeof track?.duration_ms === 'number'
+              ? formatDuration(track.duration_ms)
+              : 'Unknown';
+          const id = track?.id ?? 'Unknown';
+          return `${i + 1}. "${name}" by ${artists} (${duration}) - ID: ${id}`;
+        })
+        .join('\n');
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `${header}${currentText}\n\nNext ${toShow.length} in queue:\n\n${formatted}`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error fetching queue: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          },
+        ],
+      };
+    }
+  },
+};
+
 export const readTools = [
   searchSpotify,
   getNowPlaying,
@@ -438,4 +532,5 @@ export const readTools = [
   getPlaylistTracks,
   getRecentlyPlayed,
   getUsersSavedTracks,
+  getQueue,
 ];
