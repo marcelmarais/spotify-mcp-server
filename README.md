@@ -11,6 +11,7 @@ A lightweight [Model Context Protocol (MCP)](https://modelcontextprotocol.io) se
 - [Example Interactions](#example-interactions)
 - [Tools](#tools)
   - [Read Operations](#read-operations)
+  - [Album Operations](#album-operations)
   - [Play / Create Operations](#play--create-operations)
 - [Setup](#setup)
   - [Prerequisites](#prerequisites)
@@ -75,13 +76,15 @@ A lightweight [Model Context Protocol (MCP)](https://modelcontextprotocol.io) se
    - **Returns**: If tracks are found it returns a formatted list of recently played tracks else a message stating: "You don't have any recently played tracks on Spotify".
    - **Example**: `getRecentlyPlayed({ limit: 10 })`
 
-6. **getRecentlyPlayed**
+6. **getUsersSavedTracks**
 
-   - **Description**: Retrieves a list of recently played tracks from Spotify.
+   - **Description**: Get a list of tracks saved in the user's "Liked Songs" library
    - **Parameters**:
-     - `limit` (number, optional): A number specifying the maximum number of tracks to return.
-   - **Returns**: If tracks are found it returns a formatted list of recently played tracks else a message stating: "You don't have any recently played tracks on Spotify".
-   - **Example**: `getRecentlyPlayed({ limit: 10 })`
+     - `limit` (number, optional): Maximum number of tracks to return (1-50, default: 50)
+     - `offset` (number, optional): Offset for pagination (0-based index, default: 0)
+   - **Returns**: Formatted list of saved tracks with track names, artists, duration, track IDs, and when they were added to Liked Songs. Shows pagination info (e.g., "1-20 of 150").
+   - **Example**: `getUsersSavedTracks({ limit: 20, offset: 0 })`
+
 
 ### Play / Create Operations
 
@@ -152,6 +155,44 @@ A lightweight [Model Context Protocol (MCP)](https://modelcontextprotocol.io) se
    - **Returns**: Success status
    - **Example**: `addToQueue({ uri: "spotify:track:6rqhFgbbKwnb9MLmUQDhG6" })`
    - **Alternative**: `addToQueue({ type: "track", id: "6rqhFgbbKwnb9MLmUQDhG6" })`
+   
+
+### Album Operations
+
+1. **getAlbums**
+
+   - **Description**: Get detailed information about one or more albums by their Spotify IDs
+   - **Parameters**:
+     - `albumIds` (string|array): A single album ID or array of album IDs (max 20)
+   - **Returns**: Album details including name, artists, release date, type, total tracks, and ID. For single album returns detailed view, for multiple albums returns summary list.
+   - **Example**: `getAlbums("4aawyAB9vmqN3uQ7FjRGTy")` or `getAlbums(["4aawyAB9vmqN3uQ7FjRGTy", "1DFixLWuPkv3KT3TnV35m3"])`
+
+2. **getAlbumTracks**
+
+   - **Description**: Get tracks from a specific album with pagination support
+   - **Parameters**:
+     - `albumId` (string): The Spotify ID of the album
+     - `limit` (number, optional): Maximum number of tracks to return (1-50)
+     - `offset` (number, optional): Offset for pagination (0-based index)
+   - **Returns**: List of tracks from the album with track names, artists, duration, and IDs. Shows pagination info.
+   - **Example**: `getAlbumTracks("4aawyAB9vmqN3uQ7FjRGTy", 10, 0)`
+
+3. **saveOrRemoveAlbumForUser**
+
+   - **Description**: Save or remove albums from the user's "Your Music" library
+   - **Parameters**:
+     - `albumIds` (array): Array of Spotify album IDs (max 20)
+     - `action` (string): Action to perform: "save" or "remove"
+   - **Returns**: Success status with confirmation message
+   - **Example**: `saveOrRemoveAlbumForUser(["4aawyAB9vmqN3uQ7FjRGTy"], "save")`
+
+4. **checkUsersSavedAlbums**
+
+   - **Description**: Check if albums are saved in the user's "Your Music" library
+   - **Parameters**:
+     - `albumIds` (array): Array of Spotify album IDs to check (max 20)
+   - **Returns**: Status of each album (saved or not saved)
+   - **Example**: `checkUsersSavedAlbums(["4aawyAB9vmqN3uQ7FjRGTy", "1DFixLWuPkv3KT3TnV35m3"])`
 
 ## Setup
 
@@ -179,7 +220,7 @@ npm run build
 5. Accept the Terms of Service and click "Create"
 6. In your new app's dashboard, you'll see your **Client ID**
 7. Click "Show Client Secret" to reveal your **Client Secret**
-8. Click "Edit Settings" and add a Redirect URI (e.g., `http://localhost:8888/callback`)
+8. Click "Edit Settings" and add a Redirect URI (e.g., `http://127.0.0.1:8888/callback`)
 9. Save your changes
 
 ### Spotify API Configuration
@@ -197,7 +238,7 @@ Then edit the file with your credentials:
 {
   "clientId": "your-client-id",
   "clientSecret": "your-client-secret",
-  "redirectUri": "http://localhost:8888/callback"
+  "redirectUri": "http://127.0.0.1:8888/callback"
 }
 ```
 
@@ -236,7 +277,9 @@ npm run auth
 
 ## Integrating with Claude Desktop, Cursor, and VsCode [Via Cline model extension](https://marketplace.visualstudio.com/items/?itemName=saoudrizwan.claude-dev)
 
-To use your MCP server with Claude Desktop, add it to your Claude configuration:
+### Claude Desktop
+
+To use your MCP server with Claude Desktop, add it to your Claude configuration file (usually located at `~/.claude_desktop_config.json`):
 
 ```json
 {
@@ -249,13 +292,17 @@ To use your MCP server with Claude Desktop, add it to your Claude configuration:
 }
 ```
 
+### Cursor
+
 For Cursor, go to the MCP tab in `Cursor Settings` (command + shift + J). Add a server with this command:
 
 ```bash
-node path/to/spotify-mcp-server/build/index.js
+node /path/to/spotify-mcp-server/build/index.js
 ```
 
-To set up your MCP correctly with Cline ensure you have the following file configuration set `cline_mcp_settings.json`:
+### Cline (VS Code Extension)
+
+To set up your MCP correctly with Cline, ensure you have the following file configuration set in `cline_mcp_settings.json`:
 
 ```json
 {
@@ -263,10 +310,20 @@ To set up your MCP correctly with Cline ensure you have the following file confi
     "spotify": {
       "command": "node",
       "args": ["~/../spotify-mcp-server/build/index.js"],
-      "autoApprove": ["getListeningHistory", "getNowPlaying"]
+      "autoApprove": ["getNowPlaying", "getDevices", "searchSpotify"]
     }
   }
 }
 ```
 
 You can add additional tools to the auto approval array to run the tools without intervention.
+
+### Running the Server
+
+After building the project with `npm run build`, you can start the MCP server with:
+
+```bash
+npm start
+```
+
+The server will run on stdio and communicate with MCP clients through JSON-RPC messages.
