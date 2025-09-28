@@ -1,6 +1,54 @@
 import { z } from 'zod';
+import { getRecommendations } from './read.js';
 import type { SpotifyHandlerExtra, tool } from './types.js';
-import { handleSpotifyRequest } from './utils.js';
+import { getAccessTokenString, handleSpotifyRequest } from './utils.js';
+
+const setShuffle: tool<{
+  state: z.ZodBoolean;
+  deviceId: z.ZodOptional<z.ZodString>;
+}> = {
+  name: 'setShuffle',
+  description:
+    'Enable or disable shuffle mode on the active device (PUT /v1/me/player/shuffle)',
+  schema: {
+    state: z
+      .boolean()
+      .describe('Whether to enable (true) or disable (false) shuffle'),
+    deviceId: z
+      .string()
+      .optional()
+      .describe('The Spotify device ID to apply shuffle on'),
+  },
+  handler: async (args, _extra: SpotifyHandlerExtra) => {
+    const { state, deviceId } = args;
+
+    // Call Spotify REST directly and ignore body (204 expected)
+    const token = await getAccessTokenString();
+    const params = new URLSearchParams({ state: String(state) });
+    if (deviceId) params.append('device_id', deviceId);
+    const url = `https://api.spotify.com/v1/me/player/shuffle?${params.toString()}`;
+    try {
+      await fetch(url, {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+    } catch (_err) {
+      // Intentionally ignore non-JSON or empty-body responses and network hiccups.
+    }
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Shuffle ${state ? 'enabled' : 'disabled'}`,
+        },
+      ],
+    };
+  },
+};
+>>>>>>> main
 
 const playMusic: tool<{
   uri: z.ZodOptional<z.ZodString>;
@@ -46,19 +94,84 @@ const playMusic: tool<{
     }
 
     await handleSpotifyRequest(async (spotifyApi) => {
-      const device = deviceId || '';
+      const targetDeviceId = deviceId || '';
 
-      if (!spotifyUri) {
-        await spotifyApi.player.startResumePlayback(device);
-        return;
-      }
+      try {
+        // First, try to play directly on the specified (or active) device
+        if (spotifyUri) {
+          const isTrack =
+            spotifyUri.includes('track') || (type && type === 'track');
+          if (isTrack) {
+            await spotifyApi.player.startResumePlayback(
+              targetDeviceId,
+              undefined,
+              [spotifyUri],
+            );
+          } else {
+            await spotifyApi.player.startResumePlayback(
+              targetDeviceId,
+              spotifyUri,
+            );
+          }
+        } else {
+          await spotifyApi.player.startResumePlayback(targetDeviceId);
+        }
+      } catch (_error) {
+        // If the initial playback fails (e.g., no active device), find and transfer.
+        console.log(
+          'Initial playback failed, attempting to find and transfer to a device...',
+        );
+        const devicesResponse = await spotifyApi.player.getAvailableDevices();
+        let devices = devicesResponse.devices || [];
+        if (devices.length === 0) {
+          throw new Error(
+            'No available Spotify devices found. Please open Spotify on a device and try again.',
+          );
+        }
 
-      if (type === 'track') {
-        await spotifyApi.player.startResumePlayback(device, undefined, [
-          spotifyUri,
-        ]);
-      } else {
-        await spotifyApi.player.startResumePlayback(device, spotifyUri);
+        // Filter out the "Cobertura VAHS" device
+        devices = devices.filter((d) => d.name !== 'Cobertura VAHS');
+
+        if (devices.length === 0) {
+          throw new Error('No suitable Spotify devices found to play on.');
+        }
+
+        const selected =
+          devices.find((d) => d.id === deviceId) ||
+          devices.find((d) => d.is_active) ||
+          devices[0];
+
+        if (!selected?.id) {
+          throw new Error(
+            'Could not determine a valid Spotify device to play on.',
+          );
+        }
+
+        console.log(`Transferring playback to device: ${selected.name}`);
+        // Transfer playback to the selected device, which should auto-play.
+        await spotifyApi.player.transferPlayback([selected.id], true);
+
+        // After transfer, explicitly start playing the content
+        if (spotifyUri) {
+          const isTrack =
+            spotifyUri.includes('track') || (type && type === 'track');
+
+          if (isTrack) {
+            await spotifyApi.player.startResumePlayback(
+              selected.id,
+              undefined,
+              [spotifyUri],
+            );
+          } else {
+            await spotifyApi.player.startResumePlayback(
+              selected.id,
+              spotifyUri,
+            );
+          }
+        } else {
+          // If no URI was provided, just resume playback
+          await spotifyApi.player.startResumePlayback(selected.id);
+        }
       }
     });
 
@@ -196,7 +309,8 @@ const createPlaylist: tool<{
       content: [
         {
           type: 'text',
-          text: `Successfully created playlist "${name}"\nPlaylist ID: ${result.id}`,
+          text: `Successfully created playlist "${name}"
+Playlist ID: ${result.id}`,
         },
       ],
     };
@@ -300,7 +414,9 @@ const resumePlayback: tool<{
 
 const addToQueue: tool<{
   uri: z.ZodOptional<z.ZodString>;
-  type: z.ZodOptional<z.ZodEnum<['track', 'album', 'artist', 'playlist']>>;
+  type: z.ZodOptional<
+    z.ZodEnum<['track', 'album', 'artist', 'playlist', 'radio']>
+  >;
   id: z.ZodOptional<z.ZodString>;
   deviceId: z.ZodOptional<z.ZodString>;
 }> = {
@@ -312,7 +428,7 @@ const addToQueue: tool<{
       .optional()
       .describe('The Spotify URI to play (overrides type and id)'),
     type: z
-      .enum(['track', 'album', 'artist', 'playlist'])
+      .enum(['track', 'album', 'artist', 'playlist', 'radio'])
       .optional()
       .describe('The type of item to play'),
     id: z.string().optional().describe('The Spotify ID of the item to play'),
@@ -321,7 +437,7 @@ const addToQueue: tool<{
       .optional()
       .describe('The Spotify device ID to add the track to'),
   },
-  handler: async (args) => {
+  handler: async (args, extra) => {
     const { uri, type, id, deviceId } = args;
 
     let spotifyUri = uri;
@@ -330,6 +446,33 @@ const addToQueue: tool<{
     }
 
     if (!spotifyUri) {
+      if (type === 'radio' && id) {
+        const recommendations = await getRecommendations.handler(
+          { seed_tracks: id, limit: 20 },
+          extra,
+        );
+        if (recommendations.content[0].type === 'text') {
+          const trackIds = (
+            recommendations.content[0].text.match(/ID: (\S+)/g) || []
+          ).map((s: string) => s.replace('ID: ', ''));
+          for (const trackId of trackIds) {
+            await handleSpotifyRequest(async (spotifyApi) => {
+              await spotifyApi.player.addItemToPlaybackQueue(
+                `spotify:track:${trackId}`,
+                deviceId || undefined,
+              );
+            });
+          }
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Added ${trackIds.length} recommended tracks to queue`,
+              },
+            ],
+          };
+        }
+      }
       return {
         content: [
           {
@@ -340,14 +483,12 @@ const addToQueue: tool<{
         ],
       };
     }
-
     await handleSpotifyRequest(async (spotifyApi) => {
       await spotifyApi.player.addItemToPlaybackQueue(
         spotifyUri,
-        deviceId || '',
+        deviceId || undefined,
       );
     });
-
     return {
       content: [
         {
@@ -368,4 +509,5 @@ export const playTools = [
   addTracksToPlaylist,
   resumePlayback,
   addToQueue,
+  setShuffle,
 ];

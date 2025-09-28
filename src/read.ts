@@ -117,16 +117,28 @@ const getNowPlaying: tool<Record<string, never>> = {
   schema: {},
   handler: async (_args, _extra: SpotifyHandlerExtra) => {
     try {
-      const currentTrack = await handleSpotifyRequest(async (spotifyApi) => {
-        return await spotifyApi.player.getCurrentlyPlayingTrack();
-      });
+      const [currentTrack, devicesResponse] = await handleSpotifyRequest(
+        async (spotifyApi) => {
+          return await Promise.all([
+            spotifyApi.player.getCurrentlyPlayingTrack(),
+            spotifyApi.player.getAvailableDevices(),
+          ]);
+        },
+      );
 
+      const devices = devicesResponse.devices || [];
+      const deviceList =
+        devices.length > 0
+          ? `\n\n# Available Devices\n\n${devices
+              .map((d) => `- ${d.name} (${d.type}) - ID: ${d.id}`)
+              .join('\n')}`
+          : '';
       if (!currentTrack?.item) {
         return {
           content: [
             {
               type: 'text',
-              text: 'Nothing is currently playing on Spotify',
+              text: `Nothing is currently playing on Spotify.${deviceList}`,
             },
           ],
         };
@@ -161,7 +173,7 @@ const getNowPlaying: tool<Record<string, never>> = {
               `**Artist**: ${artists}\n` +
               `**Album**: ${album}\n` +
               `**Progress**: ${progress} / ${duration}\n` +
-              `**ID**: ${item.id}`,
+              `**ID**: ${item.id}${deviceList}`,
           },
         ],
       };
@@ -236,6 +248,7 @@ const getMyPlaylists: tool<{
 const getPlaylistTracks: tool<{
   playlistId: z.ZodString;
   limit: z.ZodOptional<z.ZodNumber>;
+  offset: z.ZodOptional<z.ZodNumber>;
 }> = {
   name: 'getPlaylistTracks',
   description: 'Get a list of tracks in a Spotify playlist',
@@ -247,9 +260,14 @@ const getPlaylistTracks: tool<{
       .max(50)
       .optional()
       .describe('Maximum number of tracks to return (1-50)'),
+    offset: z
+      .number()
+      .min(0)
+      .optional()
+      .describe('Offset for pagination (0-based index)'),
   },
   handler: async (args, _extra: SpotifyHandlerExtra) => {
-    const { playlistId, limit = 50 } = args;
+    const { playlistId, limit = 50, offset = 0 } = args;
 
     const playlistTracks = await handleSpotifyRequest(async (spotifyApi) => {
       return await spotifyApi.playlists.getPlaylistItems(
@@ -257,6 +275,7 @@ const getPlaylistTracks: tool<{
         undefined,
         undefined,
         limit as MaxInt<50>,
+        offset,
       );
     });
 
@@ -274,15 +293,15 @@ const getPlaylistTracks: tool<{
     const formattedTracks = playlistTracks.items
       .map((item, i) => {
         const { track } = item;
-        if (!track) return `${i + 1}. [Removed track]`;
+        if (!track) return `${offset + i + 1}. [Removed track]`;
 
         if (isTrack(track)) {
           const artists = track.artists.map((a) => a.name).join(', ');
           const duration = formatDuration(track.duration_ms);
-          return `${i + 1}. "${track.name}" by ${artists} (${duration}) - ID: ${track.id}`;
+          return `${offset + i + 1}. "${track.name}" by ${artists} (${duration}) - ID: ${track.id}`;
         }
 
-        return `${i + 1}. Unknown item`;
+        return `${offset + i + 1}. Unknown item`;
       })
       .join('\n');
 
@@ -290,7 +309,7 @@ const getPlaylistTracks: tool<{
       content: [
         {
           type: 'text',
-          text: `# Tracks in Playlist\n\n${formattedTracks}`,
+          text: `# Tracks in Playlist (${offset + 1}-${offset + playlistTracks.items.length} of ${playlistTracks.total})\n\n${formattedTracks}`,
         },
       ],
     };
@@ -356,10 +375,189 @@ const getRecentlyPlayed: tool<{
   },
 };
 
+const getUsersSavedTracks: tool<{
+  limit: z.ZodOptional<z.ZodNumber>;
+  offset: z.ZodOptional<z.ZodNumber>;
+}> = {
+  name: 'getUsersSavedTracks',
+  description:
+    'Get a list of tracks saved in the user\'s "Liked Songs" library',
+  schema: {
+    limit: z
+      .number()
+      .min(1)
+      .max(50)
+      .optional()
+      .describe('Maximum number of tracks to return (1-50)'),
+    offset: z
+      .number()
+      .min(0)
+      .optional()
+      .describe('Offset for pagination (0-based index)'),
+  },
+  handler: async (args, _extra: SpotifyHandlerExtra) => {
+    const { limit = 50, offset = 0 } = args;
+
+    const savedTracks = await handleSpotifyRequest(async (spotifyApi) => {
+      return await spotifyApi.currentUser.tracks.savedTracks(
+        limit as MaxInt<50>,
+        offset,
+      );
+    });
+
+    if (savedTracks.items.length === 0) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: "You don't have any saved tracks in your Liked Songs",
+          },
+        ],
+      };
+    }
+
+    const formattedTracks = savedTracks.items
+      .map((item, i) => {
+        const track = item.track;
+        if (!track) return `${i + 1}. [Removed track]`;
+
+        if (isTrack(track)) {
+          const artists = track.artists.map((a) => a.name).join(', ');
+          const duration = formatDuration(track.duration_ms);
+          const addedDate = new Date(item.added_at).toLocaleDateString();
+          return `${offset + i + 1}. "${track.name}" by ${artists} (${duration}) - ID: ${track.id} - Added: ${addedDate}`;
+        }
+
+        return `${i + 1}. Unknown item`;
+      })
+      .join('\n');
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `# Your Liked Songs (${offset + 1}-${offset + savedTracks.items.length} of ${savedTracks.total})\n\n${formattedTracks}`,
+        },
+      ],
+    };
+  },
+};
+
+const getDevices: tool<Record<string, never>> = {
+  name: 'getDevices',
+  description: 'Get a list of the all available devices to play music on',
+  schema: {},
+  handler: async (_args, _extra: SpotifyHandlerExtra) => {
+    const devices = await handleSpotifyRequest(async (spotifyApi) => {
+      return await spotifyApi.player.getAvailableDevices();
+    });
+
+    if (devices.devices.length === 0) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: "You don't have any available devices on Spotify",
+          },
+        ],
+      };
+    }
+
+    const formattedDevices = devices.devices
+      .map((device, i) => {
+        return `${i + 1}. "${device.name}" (${device.type}) - ID: ${device.id}`;
+      })
+      .join('\n');
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `# Your Spotify Devices\n\n${formattedDevices}`,
+        },
+      ],
+    };
+  },
+};
+
+export const getRecommendations: tool<{
+  seed_tracks: z.ZodOptional<z.ZodString>;
+  limit: z.ZodOptional<z.ZodNumber>;
+}> = {
+  name: 'getRecommendations',
+  description: 'Get a list of recommended tracks based on a seed track',
+  schema: {
+    seed_tracks: z
+      .string()
+      .optional()
+      .describe('A comma-separated list of Spotify IDs for seed tracks'),
+    limit: z
+      .number()
+      .min(1)
+      .max(100)
+      .optional()
+      .describe('The target number of recommendations to return (1-100)'),
+  },
+  handler: async (args, _extra: SpotifyHandlerExtra) => {
+    const { seed_tracks, limit = 20 } = args;
+
+    if (!seed_tracks) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: 'Error: Must provide at least one seed track',
+            isError: true,
+          },
+        ],
+      };
+    }
+
+    const recommendations = await handleSpotifyRequest(async (spotifyApi) => {
+      return await spotifyApi.recommendations.get({
+        seed_tracks: seed_tracks.split(','),
+        limit,
+      });
+    });
+
+    if (recommendations.tracks.length === 0) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: 'Could not find any recommendations for the given seed track(s)',
+          },
+        ],
+      };
+    }
+
+    const formattedTracks = recommendations.tracks
+      .map((track, i) => {
+        const artists = track.artists.map((a) => a.name).join(', ');
+        const duration = formatDuration(track.duration_ms);
+        return `${i + 1}. "${track.name}" by ${artists} (${duration}) - ID: ${
+          track.id
+        }`;
+      })
+      .join('\n');
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `# Recommended Tracks\n\n${formattedTracks}`,
+        },
+      ],
+    };
+  },
+};
 export const readTools = [
   searchSpotify,
   getNowPlaying,
   getMyPlaylists,
   getPlaylistTracks,
   getRecentlyPlayed,
+  getUsersSavedTracks,
+  getDevices,
+  getRecommendations,
 ];
