@@ -48,7 +48,6 @@ const setShuffle: tool<{
     };
   },
 };
->>>>>>> main
 
 const playMusic: tool<{
   uri: z.ZodOptional<z.ZodString>;
