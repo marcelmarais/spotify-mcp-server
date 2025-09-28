@@ -466,9 +466,7 @@ const getDevices: tool<Record<string, never>> = {
 
     const formattedDevices = devices.devices
       .map((device, i) => {
-        return `${i + 1}. "${device.name}" (${device.type}) - ID: ${
-          device.id
-        }`;
+        return `${i + 1}. "${device.name}" (${device.type}) - ID: ${device.id}`;
       })
       .join('\n');
 

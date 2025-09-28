@@ -117,8 +117,10 @@ async function exchangeCodeForToken(
   }
 
   // If the response is empty, there's nothing to parse
-  if (response.status === 204 || response.headers.get('Content-Length') === '0') {
-    // biome-ignore lint/suspicious/noExplicitAny: <explanation>
+  if (
+    response.status === 204 ||
+    response.headers.get('Content-Length') === '0'
+  ) {
     return {} as any;
   }
   const data = await response.json();
@@ -166,8 +168,10 @@ async function refreshAccessToken(): Promise<void> {
   }
 
   // If the response is empty, there's nothing to parse
-  if (response.status === 204 || response.headers.get('Content-Length') === '0') {
-    // biome-ignore lint/suspicious/noExplicitAny: <explanation>
+  if (
+    response.status === 204 ||
+    response.headers.get('Content-Length') === '0'
+  ) {
     return {} as any;
   }
 
@@ -379,24 +383,25 @@ export async function getAccessTokenString(): Promise<string> {
   try {
     const spotifyApi = createSpotifyApi();
     // authenticationStrategy is not part of public API types; use any to access it.
-    // biome-ignore lint/suspicious/noExplicitAny: access internal field for practicality
     const authStrategy: any = (spotifyApi as any).authenticationStrategy;
-    if (!authStrategy || typeof authStrategy.getOrCreateAccessToken !== 'function') {
+    if (
+      !authStrategy ||
+      typeof authStrategy.getOrCreateAccessToken !== 'function'
+    ) {
       throw new Error('Authentication strategy unavailable');
     }
     const tokenObj = await authStrategy.getOrCreateAccessToken();
-    if (!tokenObj || !tokenObj.access_token) {
+    if (!tokenObj?.access_token) {
       throw new Error('No access token returned');
     }
     return tokenObj.access_token as string;
-  } catch (error) {
+  } catch (_error) {
     // Attempt to refresh and retry once
     await refreshAccessToken();
     const spotifyApi = createSpotifyApi();
-    // biome-ignore lint/suspicious/noExplicitAny: access internal field for practicality
     const authStrategy: any = (spotifyApi as any).authenticationStrategy;
     const tokenObj = await authStrategy.getOrCreateAccessToken();
-    if (!tokenObj || !tokenObj.access_token) {
+    if (!tokenObj?.access_token) {
       throw new Error('Failed to obtain access token after refresh');
     }
     return tokenObj.access_token as string;
