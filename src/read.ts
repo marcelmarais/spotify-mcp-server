@@ -345,7 +345,10 @@ const getRecentlyPlayed: tool<{
         if (isTrack(track)) {
           const artists = track.artists.map((a) => a.name).join(', ');
           const duration = formatDuration(track.duration_ms);
-          return `${i + 1}. "${track.name}" by ${artists} (${duration}) - ID: ${track.id}`;
+          const playedAt = item.played_at 
+            ? new Date(item.played_at).toLocaleString() 
+            : 'Unknown time';
+          return `${i + 1}. "${track.name}" by ${artists} (${duration}) - ID: ${track.id} - Played at: ${playedAt}`;
         }
 
         return `${i + 1}. Unknown item`;
