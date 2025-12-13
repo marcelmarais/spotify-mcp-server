@@ -196,7 +196,7 @@ const createPlaylist: tool<{
       content: [
         {
           type: 'text',
-          text: `Successfully created playlist "${name}"\nPlaylist ID: ${result.id}`,
+          text: `Successfully created playlist "${name}"\nPlaylist ID: ${result.id}\nPlaylist URL: ${result.external_urls.spotify}`,
         },
       ],
     };
