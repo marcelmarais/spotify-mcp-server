@@ -359,6 +359,143 @@ const addToQueue: tool<{
   },
 };
 
+const setVolume: tool<{
+  volumePercent: z.ZodNumber;
+  deviceId: z.ZodOptional<z.ZodString>;
+}> = {
+  name: 'setVolume',
+  description:
+    'Set the playback volume to a specific percentage (0-100). Requires Spotify Premium.',
+  schema: {
+    volumePercent: z
+      .number()
+      .min(0)
+      .max(100)
+      .describe('The volume to set (0-100)'),
+    deviceId: z
+      .string()
+      .optional()
+      .describe('The Spotify device ID to set volume on'),
+  },
+  handler: async (args, _extra: SpotifyHandlerExtra) => {
+    const { volumePercent, deviceId } = args;
+
+    try {
+      await handleSpotifyRequest(async (spotifyApi) => {
+        await spotifyApi.player.setPlaybackVolume(
+          Math.round(volumePercent),
+          deviceId || '',
+        );
+      });
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Volume set to ${Math.round(volumePercent)}%`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error setting volume: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          },
+        ],
+      };
+    }
+  },
+};
+
+const adjustVolume: tool<{
+  adjustment: z.ZodNumber;
+  deviceId: z.ZodOptional<z.ZodString>;
+}> = {
+  name: 'adjustVolume',
+  description:
+    'Adjust the playback volume up or down by a relative amount. Use positive values to increase, negative to decrease. Requires Spotify Premium.',
+  schema: {
+    adjustment: z
+      .number()
+      .min(-100)
+      .max(100)
+      .describe(
+        'The amount to adjust volume by (-100 to 100). Positive increases, negative decreases.',
+      ),
+    deviceId: z
+      .string()
+      .optional()
+      .describe('The Spotify device ID to adjust volume on'),
+  },
+  handler: async (args, _extra: SpotifyHandlerExtra) => {
+    const { adjustment, deviceId } = args;
+
+    try {
+      // First get the current playback state to find current volume
+      const playback = await handleSpotifyRequest(async (spotifyApi) => {
+        return await spotifyApi.player.getPlaybackState();
+      });
+
+      if (!playback?.device) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: 'No active device found. Make sure Spotify is open and playing on a device.',
+            },
+          ],
+        };
+      }
+
+      const currentVolume = playback.device.volume_percent;
+      if (currentVolume === null || currentVolume === undefined) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: 'Unable to get current volume from device.',
+            },
+          ],
+        };
+      }
+
+      const newVolume = Math.min(100, Math.max(0, currentVolume + adjustment));
+
+      await handleSpotifyRequest(async (spotifyApi) => {
+        await spotifyApi.player.setPlaybackVolume(
+          Math.round(newVolume),
+          deviceId || '',
+        );
+      });
+
+      const direction = adjustment > 0 ? 'increased' : 'decreased';
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Volume ${direction} from ${currentVolume}% to ${Math.round(newVolume)}%`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error adjusting volume: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          },
+        ],
+      };
+    }
+  },
+};
+
 export const playTools = [
   playMusic,
   pausePlayback,
@@ -368,4 +505,6 @@ export const playTools = [
   addTracksToPlaylist,
   resumePlayback,
   addToQueue,
+  setVolume,
+  adjustVolume,
 ];
