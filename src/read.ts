@@ -113,15 +113,16 @@ const searchSpotify: tool<{
 
 const getNowPlaying: tool<Record<string, never>> = {
   name: 'getNowPlaying',
-  description: 'Get information about the currently playing track on Spotify',
+  description:
+    'Get information about the currently playing track on Spotify, including device and volume info',
   schema: {},
   handler: async (_args, _extra: SpotifyHandlerExtra) => {
     try {
-      const currentTrack = await handleSpotifyRequest(async (spotifyApi) => {
-        return await spotifyApi.player.getCurrentlyPlayingTrack();
+      const playback = await handleSpotifyRequest(async (spotifyApi) => {
+        return await spotifyApi.player.getPlaybackState();
       });
 
-      if (!currentTrack?.item) {
+      if (!playback?.item) {
         return {
           content: [
             {
@@ -132,7 +133,7 @@ const getNowPlaying: tool<Record<string, never>> = {
         };
       }
 
-      const item = currentTrack.item;
+      const item = playback.item;
 
       if (!isTrack(item)) {
         return {
@@ -148,8 +149,19 @@ const getNowPlaying: tool<Record<string, never>> = {
       const artists = item.artists.map((a) => a.name).join(', ');
       const album = item.album.name;
       const duration = formatDuration(item.duration_ms);
-      const progress = formatDuration(currentTrack.progress_ms || 0);
-      const isPlaying = currentTrack.is_playing;
+      const progress = formatDuration(playback.progress_ms || 0);
+      const isPlaying = playback.is_playing;
+
+      const device = playback.device;
+      const deviceInfo = device
+        ? `${device.name} (${device.type})`
+        : 'Unknown device';
+      const volume =
+        device?.volume_percent !== null && device?.volume_percent !== undefined
+          ? `${device.volume_percent}%`
+          : 'N/A';
+      const shuffle = playback.shuffle_state ? 'On' : 'Off';
+      const repeat = playback.repeat_state || 'off';
 
       return {
         content: [
@@ -161,7 +173,10 @@ const getNowPlaying: tool<Record<string, never>> = {
               `**Artist**: ${artists}\n` +
               `**Album**: ${album}\n` +
               `**Progress**: ${progress} / ${duration}\n` +
-              `**ID**: ${item.id}`,
+              `**ID**: ${item.id}\n\n` +
+              `**Device**: ${deviceInfo}\n` +
+              `**Volume**: ${volume}\n` +
+              `**Shuffle**: ${shuffle} | **Repeat**: ${repeat}`,
           },
         ],
       };
@@ -528,6 +543,63 @@ const getQueue: tool<{
   },
 };
 
+const getAvailableDevices: tool<Record<string, never>> = {
+  name: 'getAvailableDevices',
+  description:
+    "Get information about the user's available Spotify Connect devices",
+  schema: {},
+  handler: async (_args, _extra: SpotifyHandlerExtra) => {
+    try {
+      const devices = await handleSpotifyRequest(async (spotifyApi) => {
+        return await spotifyApi.player.getAvailableDevices();
+      });
+
+      if (!devices.devices || devices.devices.length === 0) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: 'No available devices found. Make sure Spotify is open on at least one device.',
+            },
+          ],
+        };
+      }
+
+      const formattedDevices = devices.devices
+        .map((device, i) => {
+          const status = device.is_active ? '▶ Active' : '○ Inactive';
+          const volume =
+            device.volume_percent !== null
+              ? `${device.volume_percent}%`
+              : 'N/A';
+          const restricted = device.is_restricted ? ' (Restricted)' : '';
+          return `${i + 1}. ${device.name} (${device.type})${restricted}\n   Status: ${status} | Volume: ${volume} | ID: ${device.id}`;
+        })
+        .join('\n\n');
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `# Available Spotify Devices\n\n${formattedDevices}`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error getting available devices: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          },
+        ],
+      };
+    }
+  },
+};
+
 export const readTools = [
   searchSpotify,
   getNowPlaying,
@@ -536,4 +608,5 @@ export const readTools = [
   getRecentlyPlayed,
   getUsersSavedTracks,
   getQueue,
+  getAvailableDevices,
 ];

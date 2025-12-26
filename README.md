@@ -7,7 +7,7 @@ A lightweight [Model Context Protocol (MCP)](https://modelcontextprotocol.io) se
 
 <details>
 <summary>Contents</summary>
-  
+
 - [Example Interactions](#example-interactions)
 - [Tools](#tools)
   - [Read Operations](#read-operations)
@@ -27,6 +27,7 @@ A lightweight [Model Context Protocol (MCP)](https://modelcontextprotocol.io) se
 - _"Play Elvis's first song"_
 - _"Create a Taylor Swift / Slipknot fusion playlist"_
 - _"Copy all the techno tracks from my workout playlist to my work playlist"_
+- _"Turn the volume down a bit"_
 
 ## Tools
 
@@ -44,9 +45,9 @@ A lightweight [Model Context Protocol (MCP)](https://modelcontextprotocol.io) se
 
 2. **getNowPlaying**
 
-   - **Description**: Get information about the currently playing track on Spotify
+   - **Description**: Get information about the currently playing track on Spotify, including device and volume info
    - **Parameters**: None
-   - **Returns**: Object containing track name, artist, album, playback progress, duration, and playback state
+   - **Returns**: Object containing track name, artist, album, playback progress, duration, playback state, device info, volume, and shuffle/repeat status
    - **Example**: `getNowPlaying()`
 
 3. **getMyPlaylists**
@@ -85,6 +86,21 @@ A lightweight [Model Context Protocol (MCP)](https://modelcontextprotocol.io) se
    - **Returns**: Formatted list of saved tracks with track names, artists, duration, track IDs, and when they were added to Liked Songs. Shows pagination info (e.g., "1-20 of 150").
    - **Example**: `getUsersSavedTracks({ limit: 20, offset: 0 })`
 
+7. **getQueue**
+
+   - **Description**: Get the currently playing track and upcoming items in the Spotify queue
+   - **Parameters**:
+     - `limit` (number, optional): Maximum number of upcoming items to show (1-50, default: 10)
+   - **Returns**: Currently playing track and list of upcoming tracks in the queue
+   - **Example**: `getQueue({ limit: 20 })`
+
+8. **getAvailableDevices**
+
+   - **Description**: Get information about the user's available Spotify Connect devices
+   - **Parameters**: None
+   - **Returns**: List of available devices with name, type, active status, volume, and device ID
+   - **Example**: `getAvailableDevices()`
+
 
 ### Play / Create Operations
 
@@ -108,7 +124,15 @@ A lightweight [Model Context Protocol (MCP)](https://modelcontextprotocol.io) se
    - **Returns**: Success status
    - **Example**: `pausePlayback()`
 
-3. **skipToNext**
+3. **resumePlayback**
+
+   - **Description**: Resume Spotify playback on the active device
+   - **Parameters**:
+     - `deviceId` (string, optional): ID of the device to resume playback on
+   - **Returns**: Success status
+   - **Example**: `resumePlayback()`
+
+4. **skipToNext**
 
    - **Description**: Skip to the next track in the current playback queue
    - **Parameters**:
@@ -116,7 +140,7 @@ A lightweight [Model Context Protocol (MCP)](https://modelcontextprotocol.io) se
    - **Returns**: Success status
    - **Example**: `skipToNext()`
 
-4. **skipToPrevious**
+5. **skipToPrevious**
 
    - **Description**: Skip to the previous track in the current playback queue
    - **Parameters**:
@@ -124,7 +148,7 @@ A lightweight [Model Context Protocol (MCP)](https://modelcontextprotocol.io) se
    - **Returns**: Success status
    - **Example**: `skipToPrevious()`
 
-5. **createPlaylist**
+6. **createPlaylist**
 
    - **Description**: Create a new playlist on Spotify
    - **Parameters**:
@@ -134,7 +158,7 @@ A lightweight [Model Context Protocol (MCP)](https://modelcontextprotocol.io) se
    - **Returns**: Object with the new playlist's ID and URL
    - **Example**: `createPlaylist({ name: "Workout Mix", description: "Songs to get pumped up", public: false })`
 
-6. **addTracksToPlaylist**
+7. **addTracksToPlaylist**
 
    - **Description**: Add tracks to an existing Spotify playlist
    - **Parameters**:
@@ -144,10 +168,10 @@ A lightweight [Model Context Protocol (MCP)](https://modelcontextprotocol.io) se
    - **Returns**: Success status and snapshot ID
    - **Example**: `addTracksToPlaylist({ playlistId: "3cEYpjA9oz9GiPac4AsH4n", trackUris: ["spotify:track:4iV5W9uYEdYUVa79Axb7Rh"] })`
 
-7. **addToQueue**
+8. **addToQueue**
 
    - **Description**: Adds a track, album, artist or playlist to the current playback queue
-   - - **Parameters**:
+   - **Parameters**:
      - `uri` (string, optional): Spotify URI of the item to add to queue (overrides type and id)
      - `type` (string, optional): Type of item to queue (track, album, artist, playlist)
      - `id` (string, optional): Spotify ID of the item to queue
@@ -155,7 +179,26 @@ A lightweight [Model Context Protocol (MCP)](https://modelcontextprotocol.io) se
    - **Returns**: Success status
    - **Example**: `addToQueue({ uri: "spotify:track:6rqhFgbbKwnb9MLmUQDhG6" })`
    - **Alternative**: `addToQueue({ type: "track", id: "6rqhFgbbKwnb9MLmUQDhG6" })`
-   
+
+9. **setVolume**
+
+   - **Description**: Set the playback volume to a specific percentage (requires Spotify Premium)
+   - **Parameters**:
+     - `volumePercent` (number): The volume to set (0-100)
+     - `deviceId` (string, optional): ID of the device to set volume on
+   - **Returns**: Success status with the new volume level
+   - **Example**: `setVolume({ volumePercent: 50 })`
+
+10. **adjustVolume**
+
+   - **Description**: Adjust the playback volume up or down by a relative amount (requires Spotify Premium)
+   - **Parameters**:
+     - `adjustment` (number): The amount to adjust volume by (-100 to 100). Positive values increase volume, negative values decrease it.
+     - `deviceId` (string, optional): ID of the device to adjust volume on
+   - **Returns**: Success status showing the volume change (e.g., "Volume increased from 50% to 60%")
+   - **Example**: `adjustVolume({ adjustment: 10 })` (increase by 10%)
+   - **Example**: `adjustVolume({ adjustment: -20 })` (decrease by 20%)
+
 
 ### Album Operations
 
