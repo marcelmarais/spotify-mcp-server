@@ -316,7 +316,9 @@ npm run auth
 }
 ```
 
-7. The server will automatically refresh the access token when needed, using the refresh token.
+**Note**: The `expiresAt` field is a Unix timestamp (in milliseconds) indicating when the access token expires.
+
+7. **Automatic Token Refresh**: The server will automatically refresh the access token when it expires (typically after 1 hour). The refresh happens transparently using the `refreshToken`, so you don't need to re-authenticate manually. If the refresh fails, you'll need to run `npm run auth` again to re-authenticate.
 
 ## Integrating with Claude Desktop, Cursor, and VsCode [Via Cline model extension](https://marketplace.visualstudio.com/items/?itemName=saoudrizwan.claude-dev)
 
