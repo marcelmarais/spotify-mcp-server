@@ -58,7 +58,7 @@ export function createSpotifyApi(): SpotifyApi {
     const accessToken = {
       access_token: config.accessToken,
       token_type: 'Bearer',
-      expires_in: 3600 * 24 * 30, // Default to 1 month
+      expires_in: 3600, // 1 hour - matches Spotify's actual token lifespan
       refresh_token: config.refreshToken,
     };
 
