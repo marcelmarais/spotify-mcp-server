@@ -35,7 +35,8 @@ export function loadSpotifyConfig(): SpotifyConfig {
     return config;
   } catch (error) {
     throw new Error(
-      `Failed to parse Spotify configuration: ${error instanceof Error ? error.message : String(error)
+      `Failed to parse Spotify configuration: ${
+        error instanceof Error ? error.message : String(error)
       }`,
     );
   }
@@ -55,7 +56,9 @@ export async function createSpotifyApi(): Promise<SpotifyApi> {
     const shouldRefresh = !config.expiresAt || config.expiresAt <= now;
 
     if (shouldRefresh) {
-      console.log('Access token expired or missing expiration time, refreshing...');
+      console.log(
+        'Access token expired or missing expiration time, refreshing...',
+      );
       try {
         const tokens = await refreshAccessToken(config);
         config.accessToken = tokens.access_token;
@@ -80,7 +83,9 @@ export async function createSpotifyApi(): Promise<SpotifyApi> {
     const accessToken = {
       access_token: config.accessToken,
       token_type: 'Bearer',
-      expires_in: Math.floor((config.expiresAt! - now) / 1000), // Convert to seconds
+      expires_in: Math.floor(
+        ((config.expiresAt ?? now + 3600000) - now) / 1000,
+      ),
       refresh_token: config.refreshToken,
     };
 
@@ -116,7 +121,11 @@ function base64Encode(str: string): string {
 async function exchangeCodeForToken(
   code: string,
   config: SpotifyConfig,
-): Promise<{ access_token: string; refresh_token: string; expires_in: number }> {
+): Promise<{
+  access_token: string;
+  refresh_token: string;
+  expires_in: number;
+}> {
   const tokenUrl = 'https://accounts.spotify.com/api/token';
   const authHeader = `Basic ${base64Encode(`${config.clientId}:${config.clientSecret}`)}`;
 
