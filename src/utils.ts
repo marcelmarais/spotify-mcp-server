@@ -50,7 +50,6 @@ let cachedSpotifyApi: SpotifyApi | null = null;
 export async function createSpotifyApi(): Promise<SpotifyApi> {
   const config = loadSpotifyConfig();
 
-  // Check if we need to refresh the token
   if (config.accessToken && config.refreshToken) {
     const now = Date.now();
     const shouldRefresh = !config.expiresAt || config.expiresAt <= now;
