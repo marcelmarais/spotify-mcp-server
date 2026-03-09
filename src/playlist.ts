@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { SpotifyHandlerExtra, tool } from './types.js';
-import { handleSpotifyRequest } from './utils.js';
+import { createSpotifyApi, handleSpotifyRequest, loadSpotifyConfig } from './utils.js';
 
 const getPlaylist: tool<{
   playlistId: z.ZodString;
@@ -173,14 +173,29 @@ const removeTracksFromPlaylist: tool<{
     const { playlistId, trackIds, snapshotId } = args;
 
     try {
-      const tracks = trackIds.map((id) => ({ uri: `spotify:track:${id}` }));
+      await createSpotifyApi();
+      const config = loadSpotifyConfig();
 
-      await handleSpotifyRequest(async (spotifyApi) => {
-        await spotifyApi.playlists.removeItemsFromPlaylist(playlistId, {
-          tracks,
-          ...(snapshotId ? { snapshot_id: snapshotId } : {}),
-        });
-      });
+      const items = trackIds.map((id) => ({ uri: `spotify:track:${id}` }));
+      const body: Record<string, unknown> = { tracks: items };
+      if (snapshotId) body.snapshot_id = snapshotId;
+
+      const response = await fetch(
+        `https://api.spotify.com/v1/playlists/${playlistId}/items`,
+        {
+          method: 'DELETE',
+          headers: {
+            Authorization: `Bearer ${config.accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(body),
+        },
+      );
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        throw new Error(`Spotify API error ${response.status}: ${errorData}`);
+      }
 
       return {
         content: [
@@ -246,14 +261,32 @@ const reorderPlaylistItems: tool<{
       args;
 
     try {
-      await handleSpotifyRequest(async (spotifyApi) => {
-        await spotifyApi.playlists.updatePlaylistItems(playlistId, {
-          range_start: rangeStart,
-          insert_before: insertBefore,
-          ...(rangeLength !== undefined ? { range_length: rangeLength } : {}),
-          ...(snapshotId ? { snapshot_id: snapshotId } : {}),
-        });
-      });
+      await createSpotifyApi();
+      const config = loadSpotifyConfig();
+
+      const body: Record<string, unknown> = {
+        range_start: rangeStart,
+        insert_before: insertBefore,
+      };
+      if (rangeLength !== undefined) body.range_length = rangeLength;
+      if (snapshotId) body.snapshot_id = snapshotId;
+
+      const response = await fetch(
+        `https://api.spotify.com/v1/playlists/${playlistId}/items`,
+        {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${config.accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(body),
+        },
+      );
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        throw new Error(`Spotify API error ${response.status}: ${errorData}`);
+      }
 
       const count = rangeLength ?? 1;
       return {
