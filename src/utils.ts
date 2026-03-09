@@ -46,8 +46,6 @@ export function saveSpotifyConfig(config: SpotifyConfig): void {
   fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), 'utf8');
 }
 
-let cachedSpotifyApi: SpotifyApi | null = null;
-
 export async function createSpotifyApi(): Promise<SpotifyApi> {
   const config = loadSpotifyConfig();
 
@@ -65,19 +63,12 @@ export async function createSpotifyApi(): Promise<SpotifyApi> {
         config.expiresAt = now + tokens.expires_in * 1000; // Convert seconds to milliseconds
         saveSpotifyConfig(config);
         console.log('Access token refreshed successfully');
-
-        // Clear cached API instance to force recreation with new token
-        cachedSpotifyApi = null;
       } catch (error) {
         console.error('Failed to refresh token:', error);
         throw new Error(
           'Failed to refresh access token. Please run "npm run auth" to re-authenticate.',
         );
       }
-    }
-
-    if (cachedSpotifyApi) {
-      return cachedSpotifyApi;
     }
 
     const accessToken = {
@@ -89,17 +80,14 @@ export async function createSpotifyApi(): Promise<SpotifyApi> {
       refresh_token: config.refreshToken,
     };
 
-    cachedSpotifyApi = SpotifyApi.withAccessToken(config.clientId, accessToken);
-    return cachedSpotifyApi;
+    return SpotifyApi.withAccessToken(config.clientId, accessToken);
   }
 
   // Fallback to client credentials if no user tokens available
-  cachedSpotifyApi = SpotifyApi.withClientCredentials(
+  return SpotifyApi.withClientCredentials(
     config.clientId,
     config.clientSecret,
   );
-
-  return cachedSpotifyApi;
 }
 
 function generateRandomString(length: number): string {
