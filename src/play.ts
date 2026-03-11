@@ -45,31 +45,43 @@ const playMusic: tool<{
       spotifyUri = `spotify:${type}:${id}`;
     }
 
-    await handleSpotifyRequest(async (spotifyApi) => {
-      const device = deviceId || '';
+    try {
+      await handleSpotifyRequest(async (spotifyApi) => {
+        const device = deviceId || '';
 
-      if (!spotifyUri) {
-        await spotifyApi.player.startResumePlayback(device);
-        return;
-      }
+        if (!spotifyUri) {
+          await spotifyApi.player.startResumePlayback(device);
+          return;
+        }
 
-      if (type === 'track') {
-        await spotifyApi.player.startResumePlayback(device, undefined, [
-          spotifyUri,
-        ]);
-      } else {
-        await spotifyApi.player.startResumePlayback(device, spotifyUri);
-      }
-    });
+        if (type === 'track') {
+          await spotifyApi.player.startResumePlayback(device, undefined, [
+            spotifyUri,
+          ]);
+        } else {
+          await spotifyApi.player.startResumePlayback(device, spotifyUri);
+        }
+      });
 
-    return {
-      content: [
-        {
-          type: 'text',
-          text: `Started playing ${type || 'music'} ${id ? `(ID: ${id})` : ''}`,
-        },
-      ],
-    };
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Started playing ${type || 'music'} ${id ? `(ID: ${id})` : ''}`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error starting playback: ${error instanceof Error ? error.message : String(error)}`,
+            isError: true,
+          },
+        ],
+      };
+    }
   },
 };
 
@@ -182,24 +194,48 @@ const createPlaylist: tool<{
   handler: async (args, _extra: SpotifyHandlerExtra) => {
     const { name, description, public: isPublic = false } = args;
 
-    const result = await handleSpotifyRequest(async (spotifyApi) => {
-      const me = await spotifyApi.currentUser.profile();
+    try {
+      const result = await handleSpotifyRequest(async (spotifyApi) => {
+        const me = await spotifyApi.currentUser.profile();
 
-      return await spotifyApi.playlists.createPlaylist(me.id, {
-        name,
-        description,
-        public: isPublic,
+        return await spotifyApi.playlists.createPlaylist(me.id, {
+          name,
+          description,
+          public: isPublic,
+        });
       });
-    });
 
-    return {
-      content: [
-        {
-          type: 'text',
-          text: `Successfully created playlist "${name}"\nPlaylist ID: ${result.id}\nPlaylist URL: ${result.external_urls.spotify}`,
-        },
-      ],
-    };
+      if (!result?.id) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Error: Playlist creation failed — Spotify API returned no data. The operation may not have succeeded.`,
+              isError: true,
+            },
+          ],
+        };
+      }
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Successfully created playlist "${name}"\nPlaylist ID: ${result.id}\nPlaylist URL: ${result.external_urls.spotify}`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error creating playlist: ${error instanceof Error ? error.message : String(error)}`,
+            isError: true,
+          },
+        ],
+      };
+    }
   },
 };
 
@@ -236,13 +272,28 @@ const addTracksToPlaylist: tool<{
     try {
       const trackUris = trackIds.map((id) => `spotify:track:${id}`);
 
+      let addSucceeded = true;
       await handleSpotifyRequest(async (spotifyApi) => {
         await spotifyApi.playlists.addItemsToPlaylist(
           playlistId,
           trackUris,
           position,
         );
+      }).catch(() => {
+        addSucceeded = false;
       });
+
+      if (!addSucceeded) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Warning: Tracks may not have been added — Spotify API returned no confirmation. Verify the playlist manually.`,
+              isError: true,
+            },
+          ],
+        };
+      }
 
       return {
         content: [

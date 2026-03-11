@@ -355,16 +355,21 @@ export async function handleSpotifyRequest<T>(
     const spotifyApi = await createSpotifyApi();
     return await action(spotifyApi);
   } catch (error) {
-    // Skip JSON parsing errors as these are actually successful operations
-    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorMessage =
+      error instanceof Error ? error.message : String(error);
+    // JSON parse errors typically occur on successful 204 No Content responses
+    // from void operations (play, pause, skip, etc.). The operation succeeded,
+    // but the SDK fails to parse the empty response body.
     if (
       errorMessage.includes('Unexpected token') ||
       errorMessage.includes('Unexpected non-whitespace character') ||
       errorMessage.includes('Exponent part is missing a number in JSON')
     ) {
+      console.warn(
+        `[Spotify] JSON parse error on response (void operation likely succeeded): ${errorMessage}`,
+      );
       return undefined as T;
     }
-    // Rethrow other errors
     throw error;
   }
 }
