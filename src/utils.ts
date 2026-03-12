@@ -19,27 +19,38 @@ export interface SpotifyConfig {
 }
 
 export function loadSpotifyConfig(): SpotifyConfig {
-  if (!fs.existsSync(CONFIG_FILE)) {
+  // Try environment variables first (from Gemini settings.json)
+  const envConfig: Partial<SpotifyConfig> = {
+    clientId: process.env.SPOTIFY_CLIENT_ID,
+    clientSecret: process.env.SPOTIFY_CLIENT_SECRET,
+    redirectUri: process.env.SPOTIFY_REDIRECT_URI,
+  };
+
+  let fileConfig: Partial<SpotifyConfig> = {};
+  if (fs.existsSync(CONFIG_FILE)) {
+    try {
+      fileConfig = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+    } catch (error) {
+      console.error('Failed to parse config file, falling back to env');
+    }
+  }
+
+  const config = {
+    clientId: envConfig.clientId || fileConfig.clientId,
+    clientSecret: envConfig.clientSecret || fileConfig.clientSecret,
+    redirectUri: envConfig.redirectUri || fileConfig.redirectUri,
+    accessToken: fileConfig.accessToken,
+    refreshToken: fileConfig.refreshToken,
+    expiresAt: fileConfig.expiresAt,
+  };
+
+  if (!(config.clientId && config.clientSecret && config.redirectUri)) {
     throw new Error(
-      `Spotify configuration file not found at ${CONFIG_FILE}. Please create one with clientId, clientSecret, and redirectUri.`,
+      'Spotify configuration missing. Please provide clientId, clientSecret, and redirectUri via env vars or config file.',
     );
   }
 
-  try {
-    const config = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
-    if (!(config.clientId && config.clientSecret && config.redirectUri)) {
-      throw new Error(
-        'Spotify configuration must include clientId, clientSecret, and redirectUri.',
-      );
-    }
-    return config;
-  } catch (error) {
-    throw new Error(
-      `Failed to parse Spotify configuration: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
-  }
+  return config as SpotifyConfig;
 }
 
 export function saveSpotifyConfig(config: SpotifyConfig): void {
@@ -51,23 +62,20 @@ export async function createSpotifyApi(): Promise<SpotifyApi> {
 
   if (config.accessToken && config.refreshToken) {
     const now = Date.now();
-    const shouldRefresh = !config.expiresAt || config.expiresAt <= now;
+    const shouldRefresh = !config.expiresAt || config.expiresAt <= now + 60000; // Refresh if less than 1 minute left
 
     if (shouldRefresh) {
-      console.log(
-        'Access token expired or missing expiration time, refreshing...',
-      );
       try {
         const tokens = await refreshAccessToken(config);
         config.accessToken = tokens.access_token;
-        config.expiresAt = now + tokens.expires_in * 1000; // Convert seconds to milliseconds
+        if (tokens.refresh_token) {
+          config.refreshToken = tokens.refresh_token;
+        }
+        config.expiresAt = now + tokens.expires_in * 1000;
         saveSpotifyConfig(config);
-        console.log('Access token refreshed successfully');
       } catch (error) {
         console.error('Failed to refresh token:', error);
-        throw new Error(
-          'Failed to refresh access token. Please run "npm run auth" to re-authenticate.',
-        );
+        // Continue anyway, maybe the current token still works
       }
     }
 
@@ -146,7 +154,7 @@ async function exchangeCodeForToken(
 
 async function refreshAccessToken(
   config: SpotifyConfig,
-): Promise<{ access_token: string; expires_in: number }> {
+): Promise<{ access_token: string; refresh_token?: string; expires_in: number }> {
   if (!config.refreshToken) {
     throw new Error('No refresh token available');
   }
@@ -175,6 +183,7 @@ async function refreshAccessToken(
   const data = await response.json();
   return {
     access_token: data.access_token,
+    refresh_token: data.refresh_token,
     expires_in: data.expires_in || 3600,
   };
 }
