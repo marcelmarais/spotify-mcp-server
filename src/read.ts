@@ -386,6 +386,114 @@ const getRecentlyPlayed: tool<{
   },
 };
 
+const getUsersTopItems: tool<{
+  type: z.ZodEnum<['artists', 'tracks']>;
+  time_range: z.ZodOptional<
+    z.ZodEnum<['short_term', 'medium_term', 'long_term']>
+  >;
+  limit: z.ZodOptional<z.ZodNumber>;
+  offset: z.ZodOptional<z.ZodNumber>;
+}> = {
+  name: 'getUsersTopItems',
+  description:
+    "Get the current user's top artists or tracks based on calculated affinity (listening history). Requires user-top-read scope.",
+  schema: {
+    type: z
+      .enum(['artists', 'tracks'])
+      .describe('Whether to return top artists or top tracks'),
+    time_range: z
+      .enum(['short_term', 'medium_term', 'long_term'])
+      .optional()
+      .describe(
+        'Time frame: short_term (~4 weeks), medium_term (~6 months), long_term (~1 year). Default: medium_term',
+      ),
+    limit: z
+      .number()
+      .min(1)
+      .max(50)
+      .optional()
+      .describe('Maximum number of items to return (1-50). Default: 20'),
+    offset: z
+      .number()
+      .min(0)
+      .optional()
+      .describe('Index of first item for pagination. Default: 0'),
+  },
+  handler: async (args, _extra: SpotifyHandlerExtra) => {
+    const { type, time_range, limit = 20, offset = 0 } = args;
+
+    try {
+      const result = await handleSpotifyRequest(async (spotifyApi) => {
+        return await spotifyApi.currentUser.topItems(
+          type,
+          time_range,
+          limit as MaxInt<50>,
+          offset,
+        );
+      });
+
+      if (!result.items || result.items.length === 0) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `No top ${type} data available. Listening history may be insufficient for the selected time range.`,
+            },
+          ],
+        };
+      }
+
+      const timeLabel =
+        time_range === 'long_term'
+          ? '~1 year'
+          : time_range === 'short_term'
+            ? '~4 weeks'
+            : '~6 months';
+
+      let formatted = '';
+      if (type === 'artists') {
+        formatted = (result.items as any[])
+          .map(
+            (artist: { name: string; id: string }, i: number) =>
+              `${offset + i + 1}. ${artist.name} - ID: ${artist.id}`,
+          )
+          .join('\n');
+      } else {
+        formatted = (result.items as any[])
+          .map((track: any, i: number) => {
+            if (!track || track.type !== 'track') return `${offset + i + 1}. [Unknown]`;
+            const artists = Array.isArray(track.artists)
+              ? track.artists.map((a: { name: string }) => a.name).join(', ')
+              : 'Unknown';
+            const duration = formatDuration(track.duration_ms ?? 0);
+            return `${offset + i + 1}. "${track.name}" by ${artists} (${duration}) - ID: ${track.id}`;
+          })
+          .join('\n');
+      }
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `# Your Top ${type === 'artists' ? 'Artists' : 'Tracks'} (${timeLabel})\n\n${formatted}`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error fetching top ${type}: ${
+              error instanceof Error ? error.message : String(error)
+            }. Ensure the user-top-read scope is granted.`,
+          },
+        ],
+      };
+    }
+  },
+};
+
 const getUsersSavedTracks: tool<{
   limit: z.ZodOptional<z.ZodNumber>;
   offset: z.ZodOptional<z.ZodNumber>;
@@ -676,6 +784,7 @@ export const readTools = [
   getMyPlaylists,
   getPlaylistTracks,
   getRecentlyPlayed,
+  getUsersTopItems,
   getUsersSavedTracks,
   removeUsersSavedTracks,
   getQueue,

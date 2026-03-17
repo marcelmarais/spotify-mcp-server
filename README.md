@@ -78,7 +78,18 @@ A lightweight [Model Context Protocol (MCP)](https://modelcontextprotocol.io) se
    - **Returns**: If tracks are found it returns a formatted list of recently played tracks else a message stating: "You don't have any recently played tracks on Spotify".
    - **Example**: `getRecentlyPlayed({ limit: 10 })`
 
-6. **getUsersSavedTracks**
+6. **getUsersTopItems**
+
+   - **Description**: Get the current user's top artists or tracks based on calculated affinity (listening history). Requires the `user-top-read` scope.
+   - **Parameters**:
+     - `type` (string): Whether to return top artists or top tracks (`"artists"` or `"tracks"`)
+     - `time_range` (string, optional): Time frame — `short_term` (~4 weeks), `medium_term` (~6 months), `long_term` (~1 year). Default: `medium_term`
+     - `limit` (number, optional): Maximum number of items to return (1-50, default: 20)
+     - `offset` (number, optional): Index of first item for pagination (default: 0)
+   - **Returns**: Formatted list of top artists (name, ID) or tracks (name, artists, duration, ID) for the chosen time range
+   - **Example**: `getUsersTopItems({ type: "tracks", time_range: "short_term", limit: 10 })`
+
+7. **getUsersSavedTracks**
 
    - **Description**: Get a list of tracks saved in the user's "Liked Songs" library
    - **Parameters**:
@@ -87,7 +98,7 @@ A lightweight [Model Context Protocol (MCP)](https://modelcontextprotocol.io) se
    - **Returns**: Formatted list of saved tracks with track names, artists, duration, track IDs, and when they were added to Liked Songs. Shows pagination info (e.g., "1-20 of 150").
    - **Example**: `getUsersSavedTracks({ limit: 20, offset: 0 })`
 
-7. **getQueue**
+8. **getQueue**
 
    - **Description**: Get the currently playing track and upcoming items in the Spotify queue
    - **Parameters**:
@@ -95,14 +106,14 @@ A lightweight [Model Context Protocol (MCP)](https://modelcontextprotocol.io) se
    - **Returns**: Currently playing track and list of upcoming tracks in the queue
    - **Example**: `getQueue({ limit: 20 })`
 
-8. **getAvailableDevices**
+9. **getAvailableDevices**
 
    - **Description**: Get information about the user's available Spotify Connect devices
    - **Parameters**: None
    - **Returns**: List of available devices with name, type, active status, volume, and device ID
    - **Example**: `getAvailableDevices()`
 
-9. **removeUsersSavedTracks**
+10. **removeUsersSavedTracks**
 
    - **Description**: Remove one or more tracks from the user's "Liked Songs" library (max 40 per request)
    - **Parameters**:
