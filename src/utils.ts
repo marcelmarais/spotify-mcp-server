@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
+import net from 'node:net';
 import path from 'node:path';
 import { URL, fileURLToPath } from 'node:url';
 import { SpotifyApi } from '@spotify/web-api-ts-sdk';
@@ -44,6 +45,7 @@ export function loadSpotifyConfig(): SpotifyConfig {
 
 export function saveSpotifyConfig(config: SpotifyConfig): void {
   fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), 'utf8');
+  fs.chmodSync(CONFIG_FILE, 0o600);
 }
 
 let cachedSpotifyApi: SpotifyApi | null = null;
@@ -117,6 +119,28 @@ function generateRandomString(length: number): string {
 function base64Encode(str: string): string {
   return Buffer.from(str).toString('base64');
 }
+
+function checkPortInUse(port: number, host: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = new net.Socket();
+    socket.setTimeout(1000);
+    socket.once('connect', () => {
+      socket.destroy();
+      resolve(true);
+    });
+    socket.once('timeout', () => {
+      socket.destroy();
+      resolve(false);
+    });
+    socket.once('error', () => {
+      resolve(false);
+    });
+    socket.connect(port, host);
+  });
+}
+
+const rateLimitMap = new Map<string, number>();
+const RATE_LIMIT_MS = 200;
 
 async function exchangeCodeForToken(
   code: string,
@@ -319,23 +343,38 @@ export async function authorizeSpotify(): Promise<void> {
       }
     });
 
-    server.listen(Number.parseInt(port), '127.0.0.1', () => {
-      console.log(
-        `Listening for Spotify authentication callback on port ${port}`,
-      );
-      console.log('Opening browser for authorization...');
-
-      open(authorizationUrl).catch((_error: Error) => {
-        console.log(
-          'Failed to open browser automatically. Please visit this URL to authorize:',
+    const portNum = Number.parseInt(port);
+    checkPortInUse(portNum, '127.0.0.1').then((inUse) => {
+      if (inUse) {
+        reject(
+          new Error(
+            `Port ${portNum} is already in use. Cannot start OAuth callback server.`,
+          ),
         );
-        console.log(authorizationUrl);
-      });
-    });
+        return;
+      }
 
-    server.on('error', (error) => {
-      console.error(`Server error: ${error.message}`);
-      reject(error);
+      server.listen(
+        { port: portNum, host: '127.0.0.1', exclusive: true },
+        () => {
+          console.log(
+            `Listening for Spotify authentication callback on port ${port}`,
+          );
+          console.log('Opening browser for authorization...');
+
+          open(authorizationUrl).catch((_error: Error) => {
+            console.log(
+              'Failed to open browser automatically. Please visit this URL to authorize:',
+            );
+            console.log(authorizationUrl);
+          });
+        },
+      );
+
+      server.on('error', (error) => {
+        console.error(`Server error: ${error.message}`);
+        reject(error);
+      });
     });
   });
 
@@ -351,6 +390,13 @@ export function formatDuration(ms: number): string {
 export async function handleSpotifyRequest<T>(
   action: (spotifyApi: SpotifyApi) => Promise<T>,
 ): Promise<T> {
+  const now = Date.now();
+  const lastCall = rateLimitMap.get('global');
+  if (lastCall && now - lastCall < RATE_LIMIT_MS) {
+    throw new Error('Rate limit exceeded');
+  }
+  rateLimitMap.set('global', now);
+
   try {
     const spotifyApi = await createSpotifyApi();
     return await action(spotifyApi);

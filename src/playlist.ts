@@ -9,7 +9,7 @@ const getPlaylist: tool<{
   description:
     'Get details of a specific Spotify playlist including tracks count, description and owner',
   schema: {
-    playlistId: z.string().describe('The Spotify ID of the playlist'),
+    playlistId: z.string().max(500).describe('The Spotify ID of the playlist'),
   },
   handler: async (args, _extra: SpotifyHandlerExtra) => {
     const { playlistId } = args;
@@ -70,10 +70,11 @@ const updatePlaylist: tool<{
   description:
     'Update the details of a Spotify playlist (name, description, public/private, collaborative)',
   schema: {
-    playlistId: z.string().describe('The Spotify ID of the playlist'),
-    name: z.string().optional().describe('New name for the playlist'),
+    playlistId: z.string().max(500).describe('The Spotify ID of the playlist'),
+    name: z.string().max(500).optional().describe('New name for the playlist'),
     description: z
       .string()
+      .max(500)
       .optional()
       .describe('New description for the playlist'),
     public: z
@@ -156,14 +157,15 @@ const removeTracksFromPlaylist: tool<{
   description:
     'Remove one or more tracks from a Spotify playlist (max 100 tracks per request)',
   schema: {
-    playlistId: z.string().describe('The Spotify ID of the playlist'),
+    playlistId: z.string().max(500).describe('The Spotify ID of the playlist'),
     trackIds: z
-      .array(z.string())
+      .array(z.string().max(500))
       .min(1)
       .max(100)
       .describe('Array of Spotify track IDs to remove (max 100)'),
     snapshotId: z
       .string()
+      .max(500)
       .optional()
       .describe(
         'The playlist snapshot ID to target a specific version (optional)',
@@ -218,7 +220,7 @@ const reorderPlaylistItems: tool<{
   description:
     'Reorder a range of tracks within a Spotify playlist by moving them to a new position',
   schema: {
-    playlistId: z.string().describe('The Spotify ID of the playlist'),
+    playlistId: z.string().max(500).describe('The Spotify ID of the playlist'),
     rangeStart: z
       .number()
       .nonnegative()
@@ -236,6 +238,7 @@ const reorderPlaylistItems: tool<{
       .describe('Number of consecutive items to move (defaults to 1)'),
     snapshotId: z
       .string()
+      .max(500)
       .optional()
       .describe(
         'The playlist snapshot ID to target a specific version (optional)',

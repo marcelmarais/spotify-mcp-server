@@ -11,7 +11,7 @@ const getAlbums: tool<{
     'Get detailed information about one or more albums by their Spotify IDs',
   schema: {
     albumIds: z
-      .union([z.string(), z.array(z.string()).max(20)])
+      .union([z.string().max(500), z.array(z.string().max(500)).max(20)])
       .describe('A single album ID or array of album IDs (max 20)'),
   },
   handler: async (args, _extra: SpotifyHandlerExtra) => {
@@ -104,7 +104,7 @@ const getAlbumTracks: tool<{
   name: 'getAlbumTracks',
   description: 'Get tracks from a specific album with pagination support',
   schema: {
-    albumId: z.string().describe('The Spotify ID of the album'),
+    albumId: z.string().max(500).describe('The Spotify ID of the album'),
     limit: z
       .number()
       .min(1)
@@ -182,7 +182,7 @@ const saveOrRemoveAlbumForUser: tool<{
   description: 'Save or remove albums from the user\'s "Your Music" library',
   schema: {
     albumIds: z
-      .array(z.string())
+      .array(z.string().max(500))
       .max(20)
       .describe('Array of Spotify album IDs (max 20)'),
     action: z
@@ -243,7 +243,7 @@ const checkUsersSavedAlbums: tool<{
   description: 'Check if albums are saved in the user\'s "Your Music" library',
   schema: {
     albumIds: z
-      .array(z.string())
+      .array(z.string().max(500))
       .max(20)
       .describe('Array of Spotify album IDs to check (max 20)'),
   },
