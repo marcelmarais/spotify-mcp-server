@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { SpotifyHandlerExtra, tool } from './types.js';
-import { handleSpotifyRequest } from './utils.js';
+import { handleSpotifyRequest, spotifyApiRequest } from './utils.js';
 
 const getPlaylist: tool<{
   playlistId: z.ZodString;
@@ -21,7 +21,11 @@ const getPlaylist: tool<{
 
       const owner =
         playlist.owner?.display_name ?? playlist.owner?.id ?? 'Unknown';
-      const tracksTotal = playlist.tracks?.total ?? 0;
+      const playlistWithItems = playlist as typeof playlist & {
+        items?: { total?: number };
+      };
+      const tracksTotal =
+        playlistWithItems.items?.total ?? playlist.tracks?.total ?? 0;
       const isPublic = playlist.public ? 'Public' : 'Private';
       const isCollaborative = playlist.collaborative ? ' | Collaborative' : '';
       const description = playlist.description
@@ -173,14 +177,17 @@ const removeTracksFromPlaylist: tool<{
     const { playlistId, trackIds, snapshotId } = args;
 
     try {
-      const tracks = trackIds.map((id) => ({ uri: `spotify:track:${id}` }));
-
-      await handleSpotifyRequest(async (spotifyApi) => {
-        await spotifyApi.playlists.removeItemsFromPlaylist(playlistId, {
-          tracks,
-          ...(snapshotId ? { snapshot_id: snapshotId } : {}),
-        });
-      });
+      const items = trackIds.map((id) => ({ uri: `spotify:track:${id}` }));
+      await spotifyApiRequest<{ snapshot_id: string }>(
+        `/playlists/${playlistId}/items`,
+        {
+          method: 'DELETE',
+          body: {
+            items,
+            ...(snapshotId ? { snapshot_id: snapshotId } : {}),
+          },
+        },
+      );
 
       return {
         content: [
@@ -246,14 +253,18 @@ const reorderPlaylistItems: tool<{
       args;
 
     try {
-      await handleSpotifyRequest(async (spotifyApi) => {
-        await spotifyApi.playlists.updatePlaylistItems(playlistId, {
-          range_start: rangeStart,
-          insert_before: insertBefore,
-          ...(rangeLength !== undefined ? { range_length: rangeLength } : {}),
-          ...(snapshotId ? { snapshot_id: snapshotId } : {}),
-        });
-      });
+      await spotifyApiRequest<{ snapshot_id: string }>(
+        `/playlists/${playlistId}/items`,
+        {
+          method: 'PUT',
+          body: {
+            range_start: rangeStart,
+            insert_before: insertBefore,
+            ...(rangeLength !== undefined ? { range_length: rangeLength } : {}),
+            ...(snapshotId ? { snapshot_id: snapshotId } : {}),
+          },
+        },
+      );
 
       const count = rangeLength ?? 1;
       return {

@@ -6,6 +6,7 @@ import {
   formatDuration,
   handleSpotifyRequest,
   loadSpotifyConfig,
+  spotifyApiRequest,
 } from './utils.js';
 
 function isTrack(item: any): item is SpotifyTrack {
@@ -277,14 +278,16 @@ const getPlaylistTracks: tool<{
   handler: async (args, _extra: SpotifyHandlerExtra) => {
     const { playlistId, limit = 50, offset = 0 } = args;
 
-    const playlistTracks = await handleSpotifyRequest(async (spotifyApi) => {
-      return await spotifyApi.playlists.getPlaylistItems(
-        playlistId,
-        undefined,
-        undefined,
-        limit as MaxInt<50>,
+    const playlistTracks = await spotifyApiRequest<{
+      items: Array<{
+        item?: SpotifyTrack | null;
+      }>;
+      total: number;
+    }>(`/playlists/${playlistId}/items`, {
+      query: {
+        limit,
         offset,
-      );
+      },
     });
 
     if ((playlistTracks.items?.length ?? 0) === 0) {
@@ -300,7 +303,7 @@ const getPlaylistTracks: tool<{
 
     const formattedTracks = playlistTracks.items
       .map((item, i) => {
-        const { track } = item;
+        const track = item.item;
         if (!track) return `${offset + i + 1}. [Removed track]`;
 
         if (isTrack(track)) {

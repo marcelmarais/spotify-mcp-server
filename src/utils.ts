@@ -102,6 +102,60 @@ export async function createSpotifyApi(): Promise<SpotifyApi> {
   return cachedSpotifyApi;
 }
 
+export type SpotifyApiRequestOptions = {
+  method?: string;
+  query?: Record<string, string | number | boolean | undefined>;
+  body?: unknown;
+  headers?: Record<string, string>;
+};
+
+export async function spotifyApiRequest<T>(
+  path: string,
+  options: SpotifyApiRequestOptions = {},
+): Promise<T> {
+  await createSpotifyApi();
+  const config = loadSpotifyConfig();
+
+  if (!config.accessToken) {
+    throw new Error(
+      'Missing Spotify access token. Please run "npm run auth" to re-authenticate.',
+    );
+  }
+
+  const url = new URL(
+    path.startsWith('http') ? path : `https://api.spotify.com/v1${path}`,
+  );
+
+  for (const [key, value] of Object.entries(options.query ?? {})) {
+    if (value !== undefined) {
+      url.searchParams.set(key, String(value));
+    }
+  }
+
+  const response = await fetch(url, {
+    method: options.method ?? (options.body === undefined ? 'GET' : 'POST'),
+    headers: {
+      Authorization: `Bearer ${config.accessToken}`,
+      ...(options.body === undefined ? {} : { 'Content-Type': 'application/json' }),
+      ...options.headers,
+    },
+    body: options.body === undefined ? undefined : JSON.stringify(options.body),
+  });
+
+  const responseText = await response.text();
+  if (!response.ok) {
+    throw new Error(
+      `Spotify API ${response.status} ${response.statusText}: ${responseText}`,
+    );
+  }
+
+  if (responseText.length === 0) {
+    return undefined as T;
+  }
+
+  return JSON.parse(responseText) as T;
+}
+
 function generateRandomString(length: number): string {
   const array = new Uint8Array(length);
   crypto.getRandomValues(array);
