@@ -20,7 +20,11 @@ const playMusic: tool<{
       .enum(['track', 'album', 'artist', 'playlist'])
       .optional()
       .describe('The type of item to play'),
-    id: z.string().max(500).optional().describe('The Spotify ID of the item to play'),
+    id: z
+      .string()
+      .max(500)
+      .optional()
+      .describe('The Spotify ID of the item to play'),
     deviceId: z
       .string()
       .max(500)
@@ -218,7 +222,9 @@ const addTracksToPlaylist: tool<{
   description: 'Add tracks to a Spotify playlist',
   schema: {
     playlistId: z.string().max(500).describe('The Spotify ID of the playlist'),
-    trackIds: z.array(z.string().max(500)).describe('Array of Spotify track IDs to add'),
+    trackIds: z
+      .array(z.string().max(500))
+      .describe('Array of Spotify track IDs to add'),
     position: z
       .number()
       .nonnegative()
@@ -323,7 +329,11 @@ const addToQueue: tool<{
       .enum(['track', 'album', 'artist', 'playlist'])
       .optional()
       .describe('The type of item to play'),
-    id: z.string().max(500).optional().describe('The Spotify ID of the item to play'),
+    id: z
+      .string()
+      .max(500)
+      .optional()
+      .describe('The Spotify ID of the item to play'),
     deviceId: z
       .string()
       .max(500)
