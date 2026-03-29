@@ -209,6 +209,7 @@ export async function authorizeSpotify(): Promise<void> {
     'user-library-modify',
     'user-follow-read',
     'user-follow-modify',
+    'user-top-read',
   ];
 
   const authParams = new URLSearchParams({
