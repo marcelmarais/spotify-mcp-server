@@ -1,7 +1,7 @@
 import type { MaxInt } from '@spotify/web-api-ts-sdk';
 import { z } from 'zod';
 import type { SpotifyHandlerExtra, tool } from './types.js';
-import { formatDuration, handleSpotifyRequest } from './utils.js';
+import { formatDuration, getValidConfig, handleSpotifyRequest } from './utils.js';
 
 const getAlbums: tool<{
   albumIds: z.ZodUnion<[z.ZodString, z.ZodArray<z.ZodString>]>;
@@ -31,9 +31,7 @@ const getAlbums: tool<{
 
     try {
       const albums = await handleSpotifyRequest(async (spotifyApi) => {
-        return ids.length === 1
-          ? [await spotifyApi.albums.get(ids[0])]
-          : await spotifyApi.albums.get(ids);
+        return await Promise.all(ids.map((id) => spotifyApi.albums.get(id)));
       });
 
       if (albums.length === 0) {
@@ -204,11 +202,23 @@ const saveOrRemoveAlbumForUser: tool<{
     }
 
     try {
-      await handleSpotifyRequest(async (spotifyApi) => {
-        return action === 'save'
-          ? await spotifyApi.currentUser.albums.saveAlbums(albumIds)
-          : await spotifyApi.currentUser.albums.removeSavedAlbums(albumIds);
-      });
+      const config = await getValidConfig();
+      const uris = albumIds.map((id) => `spotify:album:${id}`).join(',');
+
+      const response = await fetch(
+        `https://api.spotify.com/v1/me/library?uris=${encodeURIComponent(uris)}`,
+        {
+          method: action === 'save' ? 'PUT' : 'DELETE',
+          headers: {
+            Authorization: `Bearer ${config.accessToken}`,
+          },
+        },
+      );
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        throw new Error(`Failed to ${action} albums: ${errorData}`);
+      }
 
       const actionPastTense = action === 'save' ? 'saved' : 'removed';
       const preposition = action === 'save' ? 'to' : 'from';
@@ -262,9 +272,23 @@ const checkUsersSavedAlbums: tool<{
     }
 
     try {
-      const savedStatus = await handleSpotifyRequest(async (spotifyApi) => {
-        return await spotifyApi.currentUser.albums.hasSavedAlbums(albumIds);
-      });
+      const config = await getValidConfig();
+      const uris = albumIds.map((id) => `spotify:album:${id}`);
+      const params = new URLSearchParams({ uris: uris.join(',') });
+
+      const response = await fetch(
+        `https://api.spotify.com/v1/me/library/contains?${params}`,
+        {
+          headers: { Authorization: `Bearer ${config.accessToken}` },
+        },
+      );
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        throw new Error(`Failed to check saved albums: ${errorData}`);
+      }
+
+      const savedStatus: boolean[] = await response.json();
 
       const formattedResults = albumIds
         .map((albumId, i) => {

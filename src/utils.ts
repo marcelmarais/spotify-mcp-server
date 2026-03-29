@@ -46,60 +46,74 @@ export function saveSpotifyConfig(config: SpotifyConfig): void {
   fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), 'utf8');
 }
 
-let cachedSpotifyApi: SpotifyApi | null = null;
-
-export async function createSpotifyApi(): Promise<SpotifyApi> {
-  const config = loadSpotifyConfig();
-
-  if (config.accessToken && config.refreshToken) {
-    const now = Date.now();
-    const shouldRefresh = !config.expiresAt || config.expiresAt <= now;
-
-    if (shouldRefresh) {
-      console.log(
-        'Access token expired or missing expiration time, refreshing...',
-      );
-      try {
-        const tokens = await refreshAccessToken(config);
-        config.accessToken = tokens.access_token;
-        config.expiresAt = now + tokens.expires_in * 1000; // Convert seconds to milliseconds
-        saveSpotifyConfig(config);
-        console.log('Access token refreshed successfully');
-
-        // Clear cached API instance to force recreation with new token
-        cachedSpotifyApi = null;
-      } catch (error) {
-        console.error('Failed to refresh token:', error);
-        throw new Error(
-          'Failed to refresh access token. Please run "npm run auth" to re-authenticate.',
-        );
-      }
-    }
-
-    if (cachedSpotifyApi) {
-      return cachedSpotifyApi;
-    }
-
-    const accessToken = {
-      access_token: config.accessToken,
-      token_type: 'Bearer',
-      expires_in: Math.floor(
-        ((config.expiresAt ?? now + 3600000) - now) / 1000,
-      ),
-      refresh_token: config.refreshToken,
-    };
-
-    cachedSpotifyApi = SpotifyApi.withAccessToken(config.clientId, accessToken);
-    return cachedSpotifyApi;
+async function refreshAccessToken(
+  config: SpotifyConfig,
+): Promise<{ access_token: string; expires_in: number }> {
+  if (!config.refreshToken) {
+    throw new Error('No refresh token available');
   }
 
-  // Fallback to client credentials if no user tokens available
-  cachedSpotifyApi = SpotifyApi.withClientCredentials(
-    config.clientId,
-    config.clientSecret,
-  );
+  const tokenUrl = 'https://accounts.spotify.com/api/token';
+  const authHeader = `Basic ${base64Encode(`${config.clientId}:${config.clientSecret}`)}`;
 
-  return cachedSpotifyApi;
+  const params = new URLSearchParams();
+  params.append('grant_type', 'refresh_token');
+  params.append('refresh_token', config.refreshToken);
+
+  const response = await fetch(tokenUrl, {
+    method: 'POST',
+    headers: {
+      Authorization: authHeader,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: params,
+  });
+
+  if (!response.ok) {
+    const errorData = await response.text();
+    throw new Error(`Failed to refresh access token: ${errorData}`);
+  }
+
+  const data = await response.json();
+  return {
+    access_token: data.access_token,
+    expires_in: data.expires_in || 3600,
+  };
+}
+
+export async function getValidConfig(): Promise<SpotifyConfig> {
+  const config = loadSpotifyConfig();
+
+  if (!config.accessToken || !config.refreshToken) {
+    throw new Error(
+      'No user tokens found. Please run "npm run auth" to authenticate.',
+    );
+  }
+
+  const now = Date.now();
+  if (!config.expiresAt || config.expiresAt <= now) {
+    console.log('Access token expired, refreshing...');
+    const tokens = await refreshAccessToken(config);
+    config.accessToken = tokens.access_token;
+    config.expiresAt = now + tokens.expires_in * 1000;
+    saveSpotifyConfig(config);
+    console.log('Access token refreshed successfully');
+  }
+
+  return config;
+}
+
+export async function createSpotifyApi(): Promise<SpotifyApi> {
+  const config = await getValidConfig();
+
+  const now = Date.now();
+  const accessToken = {
+    access_token: config.accessToken!,
+    token_type: 'Bearer',
+    expires_in: Math.floor(((config.expiresAt ?? now + 3600000) - now) / 1000),
+    refresh_token: config.refreshToken!,
+  };
+  return SpotifyApi.withAccessToken(config.clientId, accessToken);
 }
 
 function generateRandomString(length: number): string {
@@ -149,6 +163,7 @@ async function exchangeCodeForToken(
   }
 
   const data = await response.json();
+  console.log('Granted scopes:', data.scope);
   return {
     access_token: data.access_token,
     refresh_token: data.refresh_token,
@@ -156,40 +171,6 @@ async function exchangeCodeForToken(
   };
 }
 
-async function refreshAccessToken(
-  config: SpotifyConfig,
-): Promise<{ access_token: string; expires_in: number }> {
-  if (!config.refreshToken) {
-    throw new Error('No refresh token available');
-  }
-
-  const tokenUrl = 'https://accounts.spotify.com/api/token';
-  const authHeader = `Basic ${base64Encode(`${config.clientId}:${config.clientSecret}`)}`;
-
-  const params = new URLSearchParams();
-  params.append('grant_type', 'refresh_token');
-  params.append('refresh_token', config.refreshToken);
-
-  const response = await fetch(tokenUrl, {
-    method: 'POST',
-    headers: {
-      Authorization: authHeader,
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: params,
-  });
-
-  if (!response.ok) {
-    const errorData = await response.text();
-    throw new Error(`Failed to refresh access token: ${errorData}`);
-  }
-
-  const data = await response.json();
-  return {
-    access_token: data.access_token,
-    expires_in: data.expires_in || 3600,
-  };
-}
 
 export async function authorizeSpotify(): Promise<void> {
   const config = loadSpotifyConfig();
@@ -220,15 +201,15 @@ export async function authorizeSpotify(): Promise<void> {
     'user-read-playback-state',
     'user-modify-playback-state',
     'user-read-currently-playing',
+    'user-read-recently-played',
     'playlist-read-private',
     'playlist-modify-private',
     'playlist-modify-public',
     'user-library-read',
     'user-library-modify',
-    'user-read-recently-played',
-    'user-modify-playback-state',
-    'user-read-playback-state',
-    'user-read-currently-playing',
+    'user-follow-read',
+    'user-follow-modify',
+    'user-top-read',
   ];
 
   const authParams = new URLSearchParams({

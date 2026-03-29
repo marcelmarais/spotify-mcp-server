@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { SpotifyHandlerExtra, tool } from './types.js';
-import { handleSpotifyRequest } from './utils.js';
+import { getValidConfig, handleSpotifyRequest } from './utils.js';
 
 const getPlaylist: tool<{
   playlistId: z.ZodString;
@@ -21,7 +21,7 @@ const getPlaylist: tool<{
 
       const owner =
         playlist.owner?.display_name ?? playlist.owner?.id ?? 'Unknown';
-      const tracksTotal = playlist.tracks?.total ?? 0;
+      const tracksTotal = (playlist as any).items?.total ?? 0;
       const isPublic = playlist.public ? 'Public' : 'Private';
       const isCollaborative = playlist.collaborative ? ' | Collaborative' : '';
       const description = playlist.description
@@ -68,7 +68,7 @@ const updatePlaylist: tool<{
 }> = {
   name: 'updatePlaylist',
   description:
-    'Update the details of a Spotify playlist (name, description, public/private, collaborative)',
+    'Update the details of a Spotify playlist (name, description, public/private, collaborative). A playlist cannot be both public and collaborative at the same time.',
   schema: {
     playlistId: z.string().describe('The Spotify ID of the playlist'),
     name: z.string().optional().describe('New name for the playlist'),
@@ -107,6 +107,17 @@ const updatePlaylist: tool<{
           {
             type: 'text',
             text: 'Error: At least one field to update must be provided (name, description, public, collaborative)',
+          },
+        ],
+      };
+    }
+
+    if (collaborative && isPublic) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: 'Error: A playlist cannot be both collaborative and public at the same time.',
           },
         ],
       };
@@ -174,13 +185,27 @@ const removeTracksFromPlaylist: tool<{
 
     try {
       const tracks = trackIds.map((id) => ({ uri: `spotify:track:${id}` }));
+      const config = await getValidConfig();
 
-      await handleSpotifyRequest(async (spotifyApi) => {
-        await spotifyApi.playlists.removeItemsFromPlaylist(playlistId, {
-          tracks,
-          ...(snapshotId ? { snapshot_id: snapshotId } : {}),
-        });
-      });
+      const response = await fetch(
+        `https://api.spotify.com/v1/playlists/${playlistId}/items`,
+        {
+          method: 'DELETE',
+          headers: {
+            Authorization: `Bearer ${config.accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            tracks,
+            ...(snapshotId ? { snapshot_id: snapshotId } : {}),
+          }),
+        },
+      );
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        throw new Error(`Failed to remove tracks: ${errorData}`);
+      }
 
       return {
         content: [
@@ -246,14 +271,29 @@ const reorderPlaylistItems: tool<{
       args;
 
     try {
-      await handleSpotifyRequest(async (spotifyApi) => {
-        await spotifyApi.playlists.updatePlaylistItems(playlistId, {
-          range_start: rangeStart,
-          insert_before: insertBefore,
-          ...(rangeLength !== undefined ? { range_length: rangeLength } : {}),
-          ...(snapshotId ? { snapshot_id: snapshotId } : {}),
-        });
-      });
+      const config = await getValidConfig();
+
+      const response = await fetch(
+        `https://api.spotify.com/v1/playlists/${playlistId}/items`,
+        {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${config.accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            range_start: rangeStart,
+            insert_before: insertBefore,
+            ...(rangeLength !== undefined ? { range_length: rangeLength } : {}),
+            ...(snapshotId ? { snapshot_id: snapshotId } : {}),
+          }),
+        },
+      );
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        throw new Error(`Failed to reorder playlist items: ${errorData}`);
+      }
 
       const count = rangeLength ?? 1;
       return {
