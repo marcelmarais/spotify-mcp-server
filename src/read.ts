@@ -1002,6 +1002,30 @@ const getSavedShows: tool<{
   },
 };
 
+const getCurrentUserProfile: tool<Record<string, never>> = {
+  name: 'getCurrentUserProfile',
+  description: 'Get profile information for the current authenticated Spotify user',
+  schema: {},
+  handler: async (_args, _extra: SpotifyHandlerExtra) => {
+    try {
+      const config = await getValidConfig();
+      const response = await fetch('https://api.spotify.com/v1/me', {
+        headers: { Authorization: `Bearer ${config.accessToken}` },
+      });
+      if (!response.ok) throw new Error(await response.text());
+      const u = await response.json();
+      return {
+        content: [{
+          type: 'text',
+          text: `# ${u.display_name ?? u.id}\n\n**ID**: ${u.id}\n**URI**: ${u.uri}\n**Profile URL**: ${u.external_urls?.spotify ?? 'N/A'}`,
+        }],
+      };
+    } catch (error) {
+      return { content: [{ type: 'text', text: `Error getting profile: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  },
+};
+
 const getArtist: tool<{ artistId: z.ZodString }> = {
   name: 'getArtist',
   description: 'Get metadata for a single Spotify artist',
@@ -1264,6 +1288,7 @@ export const readTools = [
   getSavedAudiobooks,
   getSavedEpisodes,
   getSavedShows,
+  getCurrentUserProfile,
   getArtist,
   getArtistAlbums,
   getTrack,
