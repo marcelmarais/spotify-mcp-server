@@ -627,16 +627,17 @@ const saveUsersTracks: tool<{
 
     try {
       const config = loadSpotifyConfig();
-      const uris = trackIds.map((id) => `spotify:track:${id}`);
+      const uris = trackIds.map((id) => `spotify:track:${id}`).join(',');
 
-      const response = await fetch('https://api.spotify.com/v1/me/library', {
-        method: 'PUT',
-        headers: {
-          Authorization: `Bearer ${config.accessToken}`,
-          'Content-Type': 'application/json',
+      const response = await fetch(
+        `https://api.spotify.com/v1/me/library?uris=${encodeURIComponent(uris)}`,
+        {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${config.accessToken}`,
+          },
         },
-        body: JSON.stringify({ uris }),
-      });
+      );
 
       if (!response.ok) {
         const errorData = await response.text();

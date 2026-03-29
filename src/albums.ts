@@ -203,16 +203,17 @@ const saveOrRemoveAlbumForUser: tool<{
 
     try {
       const config = loadSpotifyConfig();
-      const uris = albumIds.map((id) => `spotify:album:${id}`);
+      const uris = albumIds.map((id) => `spotify:album:${id}`).join(',');
 
-      const response = await fetch('https://api.spotify.com/v1/me/library', {
-        method: action === 'save' ? 'PUT' : 'DELETE',
-        headers: {
-          Authorization: `Bearer ${config.accessToken}`,
-          'Content-Type': 'application/json',
+      const response = await fetch(
+        `https://api.spotify.com/v1/me/library?uris=${encodeURIComponent(uris)}`,
+        {
+          method: action === 'save' ? 'PUT' : 'DELETE',
+          headers: {
+            Authorization: `Bearer ${config.accessToken}`,
+          },
         },
-        body: JSON.stringify({ uris }),
-      });
+      );
 
       if (!response.ok) {
         const errorData = await response.text();
