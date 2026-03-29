@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { SpotifyHandlerExtra, tool } from './types.js';
-import { handleSpotifyRequest } from './utils.js';
+import { handleSpotifyRequest, loadSpotifyConfig } from './utils.js';
 
 const playMusic: tool<{
   uri: z.ZodOptional<z.ZodString>;
@@ -165,9 +165,11 @@ const createPlaylist: tool<{
   name: z.ZodString;
   description: z.ZodOptional<z.ZodString>;
   public: z.ZodOptional<z.ZodBoolean>;
+  collaborative: z.ZodOptional<z.ZodBoolean>;
 }> = {
   name: 'createPlaylist',
-  description: 'Create a new playlist on Spotify',
+  description:
+    'Create a new playlist on Spotify. Defaults to private (public: false). A playlist cannot be both public and collaborative at the same time.',
   schema: {
     name: z.string().describe('The name of the playlist'),
     description: z
@@ -177,20 +179,54 @@ const createPlaylist: tool<{
     public: z
       .boolean()
       .optional()
-      .describe('Whether the playlist should be public'),
+      .describe('Whether the playlist should be public (default: false)'),
+    collaborative: z
+      .boolean()
+      .optional()
+      .describe(
+        'Whether the playlist should be collaborative — anyone with the link can add/remove tracks. Requires public to be false.',
+      ),
   },
   handler: async (args, _extra: SpotifyHandlerExtra) => {
-    const { name, description, public: isPublic = false } = args;
+    const {
+      name,
+      description,
+      public: isPublic = false,
+      collaborative = false,
+    } = args;
 
-    const result = await handleSpotifyRequest(async (spotifyApi) => {
-      const me = await spotifyApi.currentUser.profile();
+    if (collaborative && isPublic) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: 'Error: A playlist cannot be both collaborative and public at the same time.',
+          },
+        ],
+      };
+    }
 
-      return await spotifyApi.playlists.createPlaylist(me.id, {
+    const config = loadSpotifyConfig();
+    const response = await fetch('https://api.spotify.com/v1/me/playlists', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${config.accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
         name,
         description,
         public: isPublic,
-      });
+        collaborative,
+      }),
     });
+
+    if (!response.ok) {
+      const errorData = await response.text();
+      throw new Error(`Failed to create playlist: ${errorData}`);
+    }
+
+    const result = await response.json();
 
     return {
       content: [
@@ -235,14 +271,27 @@ const addTracksToPlaylist: tool<{
 
     try {
       const trackUris = trackIds.map((id) => `spotify:track:${id}`);
+      const config = loadSpotifyConfig();
 
-      await handleSpotifyRequest(async (spotifyApi) => {
-        await spotifyApi.playlists.addItemsToPlaylist(
-          playlistId,
-          trackUris,
-          position,
-        );
-      });
+      const response = await fetch(
+        `https://api.spotify.com/v1/playlists/${playlistId}/items`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${config.accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            uris: trackUris,
+            ...(position !== undefined ? { position } : {}),
+          }),
+        },
+      );
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        throw new Error(`Failed to add tracks: ${errorData}`);
+      }
 
       return {
         content: [

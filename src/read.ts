@@ -605,6 +605,67 @@ const getAvailableDevices: tool<Record<string, never>> = {
   },
 };
 
+const saveUsersTracks: tool<{
+  trackIds: z.ZodArray<z.ZodString>;
+}> = {
+  name: 'saveUsersTracks',
+  description: 'Save (like) one or more tracks to the user\'s "Liked Songs" library (max 50 per request)',
+  schema: {
+    trackIds: z
+      .array(z.string())
+      .max(50)
+      .describe('Array of Spotify track IDs to save (max 50)'),
+  },
+  handler: async (args, _extra: SpotifyHandlerExtra) => {
+    const { trackIds } = args;
+
+    if (trackIds.length === 0) {
+      return {
+        content: [{ type: 'text', text: 'Error: No track IDs provided' }],
+      };
+    }
+
+    try {
+      const config = loadSpotifyConfig();
+      const uris = trackIds.map((id) => `spotify:track:${id}`);
+
+      const response = await fetch('https://api.spotify.com/v1/me/library', {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${config.accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ uris }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        throw new Error(`Failed to save tracks: ${errorData}`);
+      }
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Successfully saved ${trackIds.length} track${trackIds.length === 1 ? '' : 's'} to your Liked Songs`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error saving tracks to Liked Songs: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          },
+        ],
+      };
+    }
+  },
+};
+
 const removeUsersSavedTracks: tool<{
   trackIds: z.ZodArray<z.ZodString>;
 }> = {
@@ -677,6 +738,7 @@ export const readTools = [
   getPlaylistTracks,
   getRecentlyPlayed,
   getUsersSavedTracks,
+  saveUsersTracks,
   removeUsersSavedTracks,
   getQueue,
   getAvailableDevices,
