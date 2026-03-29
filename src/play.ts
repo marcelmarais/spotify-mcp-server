@@ -545,6 +545,98 @@ const adjustVolume: tool<{
   },
 };
 
+const seekToPosition: tool<{
+  positionMs: z.ZodNumber;
+  deviceId: z.ZodOptional<z.ZodString>;
+}> = {
+  name: 'seekToPosition',
+  description: 'Seek to a position in the currently playing track',
+  schema: {
+    positionMs: z.number().nonnegative().describe('Position in milliseconds to seek to'),
+    deviceId: z.string().optional().describe('Device ID to target (optional)'),
+  },
+  handler: async (args, _extra: SpotifyHandlerExtra) => {
+    const { positionMs, deviceId } = args;
+    try {
+      await handleSpotifyRequest(async (spotifyApi) => {
+        await spotifyApi.player.seekToPosition(positionMs, deviceId);
+      });
+      return { content: [{ type: 'text', text: `Seeked to ${Math.floor(positionMs / 1000)}s` }] };
+    } catch (error) {
+      return { content: [{ type: 'text', text: `Error seeking: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  },
+};
+
+const setRepeatMode: tool<{
+  state: z.ZodEnum<['track', 'context', 'off']>;
+  deviceId: z.ZodOptional<z.ZodString>;
+}> = {
+  name: 'setRepeatMode',
+  description: "Set repeat mode: 'track' repeats the current track, 'context' repeats the current album/playlist, 'off' disables repeat",
+  schema: {
+    state: z.enum(['track', 'context', 'off']).describe("Repeat mode: 'track', 'context', or 'off'"),
+    deviceId: z.string().optional().describe('Device ID to target (optional)'),
+  },
+  handler: async (args, _extra: SpotifyHandlerExtra) => {
+    const { state, deviceId } = args;
+    try {
+      await handleSpotifyRequest(async (spotifyApi) => {
+        await spotifyApi.player.setRepeatMode(state, deviceId);
+      });
+      return { content: [{ type: 'text', text: `Repeat mode set to: ${state}` }] };
+    } catch (error) {
+      return { content: [{ type: 'text', text: `Error setting repeat mode: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  },
+};
+
+const toggleShuffle: tool<{
+  state: z.ZodBoolean;
+  deviceId: z.ZodOptional<z.ZodString>;
+}> = {
+  name: 'toggleShuffle',
+  description: 'Toggle shuffle mode on or off',
+  schema: {
+    state: z.boolean().describe('true to enable shuffle, false to disable'),
+    deviceId: z.string().optional().describe('Device ID to target (optional)'),
+  },
+  handler: async (args, _extra: SpotifyHandlerExtra) => {
+    const { state, deviceId } = args;
+    try {
+      await handleSpotifyRequest(async (spotifyApi) => {
+        await spotifyApi.player.togglePlaybackShuffle(state, deviceId);
+      });
+      return { content: [{ type: 'text', text: `Shuffle ${state ? 'enabled' : 'disabled'}` }] };
+    } catch (error) {
+      return { content: [{ type: 'text', text: `Error toggling shuffle: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  },
+};
+
+const transferPlayback: tool<{
+  deviceId: z.ZodString;
+  play: z.ZodOptional<z.ZodBoolean>;
+}> = {
+  name: 'transferPlayback',
+  description: 'Transfer playback to a different device',
+  schema: {
+    deviceId: z.string().describe('The ID of the device to transfer playback to'),
+    play: z.boolean().optional().describe('Whether to ensure playback starts on the new device (default: keep current state)'),
+  },
+  handler: async (args, _extra: SpotifyHandlerExtra) => {
+    const { deviceId, play } = args;
+    try {
+      await handleSpotifyRequest(async (spotifyApi) => {
+        await spotifyApi.player.transferPlayback([deviceId], play);
+      });
+      return { content: [{ type: 'text', text: `Playback transferred to device: ${deviceId}` }] };
+    } catch (error) {
+      return { content: [{ type: 'text', text: `Error transferring playback: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  },
+};
+
 export const playTools = [
   playMusic,
   pausePlayback,
@@ -556,4 +648,8 @@ export const playTools = [
   addToQueue,
   setVolume,
   adjustVolume,
+  seekToPosition,
+  setRepeatMode,
+  toggleShuffle,
+  transferPlayback,
 ];
