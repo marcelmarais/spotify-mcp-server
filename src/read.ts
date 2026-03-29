@@ -737,6 +737,37 @@ const removeUsersSavedTracks: tool<{
   },
 };
 
+const followArtists: tool<{
+  artistIds: z.ZodArray<z.ZodString>;
+  action: z.ZodEnum<['follow', 'unfollow']>;
+}> = {
+  name: 'followArtists',
+  description: 'Follow or unfollow one or more Spotify artists',
+  schema: {
+    artistIds: z.array(z.string()).min(1).describe('Array of Spotify artist IDs'),
+    action: z.enum(['follow', 'unfollow']).describe("'follow' to follow, 'unfollow' to unfollow"),
+  },
+  handler: async (args, _extra: SpotifyHandlerExtra) => {
+    const { artistIds, action } = args;
+    try {
+      const config = await getValidConfig();
+      const uris = artistIds.map((id) => `spotify:artist:${id}`).join(',');
+      const response = await fetch(
+        `https://api.spotify.com/v1/me/library?uris=${encodeURIComponent(uris)}`,
+        {
+          method: action === 'follow' ? 'PUT' : 'DELETE',
+          headers: { Authorization: `Bearer ${config.accessToken}` },
+        },
+      );
+      if (!response.ok) throw new Error(await response.text());
+      const verb = action === 'follow' ? 'Following' : 'Unfollowed';
+      return { content: [{ type: 'text', text: `${verb} ${artistIds.length} artist${artistIds.length === 1 ? '' : 's'}` }] };
+    } catch (error) {
+      return { content: [{ type: 'text', text: `Error ${args.action}ing artists: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  },
+};
+
 const getFollowedArtists: tool<{
   limit: z.ZodOptional<z.ZodNumber>;
   after: z.ZodOptional<z.ZodString>;
@@ -1332,6 +1363,7 @@ export const readTools = [
   getUsersSavedTracks,
   saveUsersTracks,
   removeUsersSavedTracks,
+  followArtists,
   getFollowedArtists,
   getSavedAudiobooks,
   getSavedEpisodes,
