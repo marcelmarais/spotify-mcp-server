@@ -235,7 +235,7 @@ const getMyPlaylists: tool<{
 
     const formattedPlaylists = playlists.items
       .map((playlist, i) => {
-        const tracksTotal = playlist.tracks?.total ? playlist.tracks.total : 0;
+        const tracksTotal = (playlist as any).items?.total ?? 0;
         return `${i + 1}. "${playlist.name}" (${tracksTotal} tracks) - ID: ${
           playlist.id
         }`;
