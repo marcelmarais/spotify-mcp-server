@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { SpotifyHandlerExtra, tool } from './types.js';
-import { handleSpotifyRequest, loadSpotifyConfig } from './utils.js';
+import { getValidConfig, handleSpotifyRequest } from './utils.js';
 
 const getPlaylist: tool<{
   playlistId: z.ZodString;
@@ -185,7 +185,7 @@ const removeTracksFromPlaylist: tool<{
 
     try {
       const tracks = trackIds.map((id) => ({ uri: `spotify:track:${id}` }));
-      const config = loadSpotifyConfig();
+      const config = await getValidConfig();
 
       const response = await fetch(
         `https://api.spotify.com/v1/playlists/${playlistId}/items`,
@@ -271,7 +271,7 @@ const reorderPlaylistItems: tool<{
       args;
 
     try {
-      const config = loadSpotifyConfig();
+      const config = await getValidConfig();
 
       const response = await fetch(
         `https://api.spotify.com/v1/playlists/${playlistId}/items`,

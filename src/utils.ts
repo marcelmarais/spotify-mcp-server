@@ -46,24 +46,74 @@ export function saveSpotifyConfig(config: SpotifyConfig): void {
   fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), 'utf8');
 }
 
-export async function createSpotifyApi(): Promise<SpotifyApi> {
-  const config = loadSpotifyConfig();
-
-  if (config.accessToken && config.refreshToken) {
-    const accessToken = {
-      access_token: config.accessToken,
-      token_type: 'Bearer',
-      expires_in: Math.floor(
-        ((config.expiresAt ?? Date.now() + 3600000) - Date.now()) / 1000,
-      ),
-      refresh_token: config.refreshToken,
-    };
-    return SpotifyApi.withAccessToken(config.clientId, accessToken);
+async function refreshAccessToken(
+  config: SpotifyConfig,
+): Promise<{ access_token: string; expires_in: number }> {
+  if (!config.refreshToken) {
+    throw new Error('No refresh token available');
   }
 
-  throw new Error(
-    'No user tokens found. Please run "npm run auth" to authenticate.',
-  );
+  const tokenUrl = 'https://accounts.spotify.com/api/token';
+  const authHeader = `Basic ${base64Encode(`${config.clientId}:${config.clientSecret}`)}`;
+
+  const params = new URLSearchParams();
+  params.append('grant_type', 'refresh_token');
+  params.append('refresh_token', config.refreshToken);
+
+  const response = await fetch(tokenUrl, {
+    method: 'POST',
+    headers: {
+      Authorization: authHeader,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: params,
+  });
+
+  if (!response.ok) {
+    const errorData = await response.text();
+    throw new Error(`Failed to refresh access token: ${errorData}`);
+  }
+
+  const data = await response.json();
+  return {
+    access_token: data.access_token,
+    expires_in: data.expires_in || 3600,
+  };
+}
+
+export async function getValidConfig(): Promise<SpotifyConfig> {
+  const config = loadSpotifyConfig();
+
+  if (!config.accessToken || !config.refreshToken) {
+    throw new Error(
+      'No user tokens found. Please run "npm run auth" to authenticate.',
+    );
+  }
+
+  const now = Date.now();
+  if (!config.expiresAt || config.expiresAt <= now) {
+    console.log('Access token expired, refreshing...');
+    const tokens = await refreshAccessToken(config);
+    config.accessToken = tokens.access_token;
+    config.expiresAt = now + tokens.expires_in * 1000;
+    saveSpotifyConfig(config);
+    console.log('Access token refreshed successfully');
+  }
+
+  return config;
+}
+
+export async function createSpotifyApi(): Promise<SpotifyApi> {
+  const config = await getValidConfig();
+
+  const now = Date.now();
+  const accessToken = {
+    access_token: config.accessToken!,
+    token_type: 'Bearer',
+    expires_in: Math.floor(((config.expiresAt ?? now + 3600000) - now) / 1000),
+    refresh_token: config.refreshToken!,
+  };
+  return SpotifyApi.withAccessToken(config.clientId, accessToken);
 }
 
 function generateRandomString(length: number): string {

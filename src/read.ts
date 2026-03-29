@@ -2,10 +2,9 @@ import type { MaxInt } from '@spotify/web-api-ts-sdk';
 import { z } from 'zod';
 import type { SpotifyHandlerExtra, SpotifyTrack, tool } from './types.js';
 import {
-  createSpotifyApi,
   formatDuration,
+  getValidConfig,
   handleSpotifyRequest,
-  loadSpotifyConfig,
 } from './utils.js';
 
 function isTrack(item: any): item is SpotifyTrack {
@@ -626,7 +625,7 @@ const saveUsersTracks: tool<{
     }
 
     try {
-      const config = loadSpotifyConfig();
+      const config = await getValidConfig();
       const uris = trackIds.map((id) => `spotify:track:${id}`).join(',');
 
       const response = await fetch(
@@ -689,9 +688,7 @@ const removeUsersSavedTracks: tool<{
     }
 
     try {
-      // Ensure token is fresh (handles auto-refresh if needed)
-      await createSpotifyApi();
-      const config = loadSpotifyConfig();
+      const config = await getValidConfig();
 
       const uris = trackIds.map((id) => `spotify:track:${id}`).join(',');
       const response = await fetch(

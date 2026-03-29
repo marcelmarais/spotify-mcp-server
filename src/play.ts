@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { SpotifyHandlerExtra, tool } from './types.js';
-import { handleSpotifyRequest, loadSpotifyConfig } from './utils.js';
+import { getValidConfig, handleSpotifyRequest } from './utils.js';
 
 const playMusic: tool<{
   uri: z.ZodOptional<z.ZodString>;
@@ -206,7 +206,7 @@ const createPlaylist: tool<{
       };
     }
 
-    const config = loadSpotifyConfig();
+    const config = await getValidConfig();
     const response = await fetch('https://api.spotify.com/v1/me/playlists', {
       method: 'POST',
       headers: {
@@ -271,7 +271,7 @@ const addTracksToPlaylist: tool<{
 
     try {
       const trackUris = trackIds.map((id) => `spotify:track:${id}`);
-      const config = loadSpotifyConfig();
+      const config = await getValidConfig();
 
       const response = await fetch(
         `https://api.spotify.com/v1/playlists/${playlistId}/items`,

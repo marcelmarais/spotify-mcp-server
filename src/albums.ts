@@ -1,7 +1,7 @@
 import type { MaxInt } from '@spotify/web-api-ts-sdk';
 import { z } from 'zod';
 import type { SpotifyHandlerExtra, tool } from './types.js';
-import { formatDuration, handleSpotifyRequest, loadSpotifyConfig } from './utils.js';
+import { formatDuration, getValidConfig, handleSpotifyRequest } from './utils.js';
 
 const getAlbums: tool<{
   albumIds: z.ZodUnion<[z.ZodString, z.ZodArray<z.ZodString>]>;
@@ -202,7 +202,7 @@ const saveOrRemoveAlbumForUser: tool<{
     }
 
     try {
-      const config = loadSpotifyConfig();
+      const config = await getValidConfig();
       const uris = albumIds.map((id) => `spotify:album:${id}`).join(',');
 
       const response = await fetch(
@@ -272,7 +272,7 @@ const checkUsersSavedAlbums: tool<{
     }
 
     try {
-      const config = loadSpotifyConfig();
+      const config = await getValidConfig();
       const uris = albumIds.map((id) => `spotify:album:${id}`);
       const params = new URLSearchParams({ uris: uris.join(',') });
 
