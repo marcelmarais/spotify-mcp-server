@@ -1002,6 +1002,255 @@ const getSavedShows: tool<{
   },
 };
 
+const getArtist: tool<{ artistId: z.ZodString }> = {
+  name: 'getArtist',
+  description: 'Get metadata for a single Spotify artist',
+  schema: { artistId: z.string().describe('The Spotify ID of the artist') },
+  handler: async (args, _extra: SpotifyHandlerExtra) => {
+    try {
+      const config = await getValidConfig();
+      const response = await fetch(`https://api.spotify.com/v1/artists/${args.artistId}`, {
+        headers: { Authorization: `Bearer ${config.accessToken}` },
+      });
+      if (!response.ok) throw new Error(await response.text());
+      const a = await response.json();
+      const genres = a.genres?.join(', ') || 'N/A';
+      return {
+        content: [{
+          type: 'text',
+          text: `# ${a.name}\n\n**Genres**: ${genres}\n**ID**: ${a.id}\n**URI**: ${a.uri}`,
+        }],
+      };
+    } catch (error) {
+      return { content: [{ type: 'text', text: `Error getting artist: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  },
+};
+
+const getArtistAlbums: tool<{
+  artistId: z.ZodString;
+  limit: z.ZodOptional<z.ZodNumber>;
+  offset: z.ZodOptional<z.ZodNumber>;
+}> = {
+  name: 'getArtistAlbums',
+  description: "Get albums released by a Spotify artist",
+  schema: {
+    artistId: z.string().describe('The Spotify ID of the artist'),
+    limit: z.number().min(1).max(50).optional().describe('Maximum number of albums to return (1-50)'),
+    offset: z.number().min(0).optional().describe('Offset for pagination'),
+  },
+  handler: async (args, _extra: SpotifyHandlerExtra) => {
+    const { artistId, limit = 20, offset = 0 } = args;
+    try {
+      const config = await getValidConfig();
+      const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+      const response = await fetch(`https://api.spotify.com/v1/artists/${artistId}/albums?${params}`, {
+        headers: { Authorization: `Bearer ${config.accessToken}` },
+      });
+      if (!response.ok) throw new Error(await response.text());
+      const data = await response.json();
+      if (data.items.length === 0) return { content: [{ type: 'text', text: 'No albums found for this artist' }] };
+      const formatted = data.items
+        .map((a: any, i: number) => `${offset + i + 1}. "${a.name}" (${a.album_type}, ${a.release_date}) - ID: ${a.id}`)
+        .join('\n');
+      return { content: [{ type: 'text', text: `# Albums by Artist (${offset + 1}-${offset + data.items.length} of ${data.total})\n\n${formatted}` }] };
+    } catch (error) {
+      return { content: [{ type: 'text', text: `Error getting artist albums: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  },
+};
+
+const getTrack: tool<{ trackId: z.ZodString }> = {
+  name: 'getTrack',
+  description: 'Get metadata for a single Spotify track',
+  schema: { trackId: z.string().describe('The Spotify ID of the track') },
+  handler: async (args, _extra: SpotifyHandlerExtra) => {
+    try {
+      const config = await getValidConfig();
+      const response = await fetch(`https://api.spotify.com/v1/tracks/${args.trackId}`, {
+        headers: { Authorization: `Bearer ${config.accessToken}` },
+      });
+      if (!response.ok) throw new Error(await response.text());
+      const t = await response.json();
+      const artists = t.artists.map((a: any) => a.name).join(', ');
+      const duration = formatDuration(t.duration_ms);
+      return {
+        content: [{
+          type: 'text',
+          text: `# "${t.name}"\n\n**Artists**: ${artists}\n**Album**: ${t.album?.name}\n**Duration**: ${duration}\n**ID**: ${t.id}\n**URI**: ${t.uri}`,
+        }],
+      };
+    } catch (error) {
+      return { content: [{ type: 'text', text: `Error getting track: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  },
+};
+
+const getShow: tool<{ showId: z.ZodString }> = {
+  name: 'getShow',
+  description: 'Get metadata for a single Spotify podcast show',
+  schema: { showId: z.string().describe('The Spotify ID of the show') },
+  handler: async (args, _extra: SpotifyHandlerExtra) => {
+    try {
+      const config = await getValidConfig();
+      const response = await fetch(`https://api.spotify.com/v1/shows/${args.showId}`, {
+        headers: { Authorization: `Bearer ${config.accessToken}` },
+      });
+      if (!response.ok) throw new Error(await response.text());
+      const s = await response.json();
+      return {
+        content: [{
+          type: 'text',
+          text: `# "${s.name}"\n\n**Total Episodes**: ${s.total_episodes}\n**ID**: ${s.id}\n**URI**: ${s.uri}`,
+        }],
+      };
+    } catch (error) {
+      return { content: [{ type: 'text', text: `Error getting show: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  },
+};
+
+const getShowEpisodes: tool<{
+  showId: z.ZodString;
+  limit: z.ZodOptional<z.ZodNumber>;
+  offset: z.ZodOptional<z.ZodNumber>;
+}> = {
+  name: 'getShowEpisodes',
+  description: 'Get episodes belonging to a Spotify podcast show',
+  schema: {
+    showId: z.string().describe('The Spotify ID of the show'),
+    limit: z.number().min(1).max(50).optional().describe('Maximum number of episodes to return (1-50)'),
+    offset: z.number().min(0).optional().describe('Offset for pagination'),
+  },
+  handler: async (args, _extra: SpotifyHandlerExtra) => {
+    const { showId, limit = 20, offset = 0 } = args;
+    try {
+      const config = await getValidConfig();
+      const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+      const response = await fetch(`https://api.spotify.com/v1/shows/${showId}/episodes?${params}`, {
+        headers: { Authorization: `Bearer ${config.accessToken}` },
+      });
+      if (!response.ok) throw new Error(await response.text());
+      const data = await response.json();
+      if (data.items.length === 0) return { content: [{ type: 'text', text: 'No episodes found' }] };
+      const formatted = data.items
+        .map((ep: any, i: number) => `${offset + i + 1}. "${ep.name}" (${formatDuration(ep.duration_ms)}) - ID: ${ep.id}`)
+        .join('\n');
+      return { content: [{ type: 'text', text: `# Episodes (${offset + 1}-${offset + data.items.length} of ${data.total})\n\n${formatted}` }] };
+    } catch (error) {
+      return { content: [{ type: 'text', text: `Error getting show episodes: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  },
+};
+
+const getEpisode: tool<{ episodeId: z.ZodString }> = {
+  name: 'getEpisode',
+  description: 'Get metadata for a single Spotify podcast episode',
+  schema: { episodeId: z.string().describe('The Spotify ID of the episode') },
+  handler: async (args, _extra: SpotifyHandlerExtra) => {
+    try {
+      const config = await getValidConfig();
+      const response = await fetch(`https://api.spotify.com/v1/episodes/${args.episodeId}`, {
+        headers: { Authorization: `Bearer ${config.accessToken}` },
+      });
+      if (!response.ok) throw new Error(await response.text());
+      const ep = await response.json();
+      const duration = formatDuration(ep.duration_ms);
+      return {
+        content: [{
+          type: 'text',
+          text: `# "${ep.name}"\n\n**Show**: ${ep.show?.name}\n**Duration**: ${duration}\n**Release Date**: ${ep.release_date}\n**ID**: ${ep.id}\n**URI**: ${ep.uri}`,
+        }],
+      };
+    } catch (error) {
+      return { content: [{ type: 'text', text: `Error getting episode: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  },
+};
+
+const getAudiobook: tool<{ audiobookId: z.ZodString }> = {
+  name: 'getAudiobook',
+  description: 'Get metadata for a single Spotify audiobook',
+  schema: { audiobookId: z.string().describe('The Spotify ID of the audiobook') },
+  handler: async (args, _extra: SpotifyHandlerExtra) => {
+    try {
+      const config = await getValidConfig();
+      const response = await fetch(`https://api.spotify.com/v1/audiobooks/${args.audiobookId}`, {
+        headers: { Authorization: `Bearer ${config.accessToken}` },
+      });
+      if (!response.ok) throw new Error(await response.text());
+      const b = await response.json();
+      const authors = b.authors?.map((a: any) => a.name).join(', ') || 'Unknown';
+      return {
+        content: [{
+          type: 'text',
+          text: `# "${b.name}"\n\n**Authors**: ${authors}\n**Total Chapters**: ${b.total_chapters}\n**ID**: ${b.id}\n**URI**: ${b.uri}`,
+        }],
+      };
+    } catch (error) {
+      return { content: [{ type: 'text', text: `Error getting audiobook: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  },
+};
+
+const getAudiobookChapters: tool<{
+  audiobookId: z.ZodString;
+  limit: z.ZodOptional<z.ZodNumber>;
+  offset: z.ZodOptional<z.ZodNumber>;
+}> = {
+  name: 'getAudiobookChapters',
+  description: 'Get chapters belonging to a Spotify audiobook',
+  schema: {
+    audiobookId: z.string().describe('The Spotify ID of the audiobook'),
+    limit: z.number().min(1).max(50).optional().describe('Maximum number of chapters to return (1-50)'),
+    offset: z.number().min(0).optional().describe('Offset for pagination'),
+  },
+  handler: async (args, _extra: SpotifyHandlerExtra) => {
+    const { audiobookId, limit = 20, offset = 0 } = args;
+    try {
+      const config = await getValidConfig();
+      const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+      const response = await fetch(`https://api.spotify.com/v1/audiobooks/${audiobookId}/chapters?${params}`, {
+        headers: { Authorization: `Bearer ${config.accessToken}` },
+      });
+      if (!response.ok) throw new Error(await response.text());
+      const data = await response.json();
+      if (data.items.length === 0) return { content: [{ type: 'text', text: 'No chapters found' }] };
+      const formatted = data.items
+        .map((ch: any, i: number) => `${offset + i + 1}. "${ch.name}" (${formatDuration(ch.duration_ms)}) - ID: ${ch.id}`)
+        .join('\n');
+      return { content: [{ type: 'text', text: `# Chapters (${offset + 1}-${offset + data.items.length} of ${data.total})\n\n${formatted}` }] };
+    } catch (error) {
+      return { content: [{ type: 'text', text: `Error getting audiobook chapters: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  },
+};
+
+const getChapter: tool<{ chapterId: z.ZodString }> = {
+  name: 'getChapter',
+  description: 'Get metadata for a single Spotify audiobook chapter',
+  schema: { chapterId: z.string().describe('The Spotify ID of the chapter') },
+  handler: async (args, _extra: SpotifyHandlerExtra) => {
+    try {
+      const config = await getValidConfig();
+      const response = await fetch(`https://api.spotify.com/v1/chapters/${args.chapterId}`, {
+        headers: { Authorization: `Bearer ${config.accessToken}` },
+      });
+      if (!response.ok) throw new Error(await response.text());
+      const ch = await response.json();
+      const duration = formatDuration(ch.duration_ms);
+      return {
+        content: [{
+          type: 'text',
+          text: `# "${ch.name}"\n\n**Audiobook**: ${ch.audiobook?.name}\n**Duration**: ${duration}\n**Chapter**: ${ch.chapter_number}\n**ID**: ${ch.id}\n**URI**: ${ch.uri}`,
+        }],
+      };
+    } catch (error) {
+      return { content: [{ type: 'text', text: `Error getting chapter: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  },
+};
+
 export const readTools = [
   searchSpotify,
   getNowPlaying,
@@ -1015,6 +1264,15 @@ export const readTools = [
   getSavedAudiobooks,
   getSavedEpisodes,
   getSavedShows,
+  getArtist,
+  getArtistAlbums,
+  getTrack,
+  getShow,
+  getShowEpisodes,
+  getEpisode,
+  getAudiobook,
+  getAudiobookChapters,
+  getChapter,
   getQueue,
   getAvailableDevices,
 ];
