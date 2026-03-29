@@ -1002,6 +1002,54 @@ const getSavedShows: tool<{
   },
 };
 
+const getUserTopItems: tool<{
+  type: z.ZodEnum<['artists', 'tracks']>;
+  timeRange: z.ZodOptional<z.ZodEnum<['short_term', 'medium_term', 'long_term']>>;
+  limit: z.ZodOptional<z.ZodNumber>;
+  offset: z.ZodOptional<z.ZodNumber>;
+}> = {
+  name: 'getUserTopItems',
+  description: "Get the current user's top artists or tracks over a given time range",
+  schema: {
+    type: z.enum(['artists', 'tracks']).describe("Type of items to retrieve: 'artists' or 'tracks'"),
+    timeRange: z
+      .enum(['short_term', 'medium_term', 'long_term'])
+      .optional()
+      .describe("Time range: 'short_term' (~4 weeks), 'medium_term' (~6 months), 'long_term' (all time). Default: medium_term"),
+    limit: z.number().min(1).max(50).optional().describe('Maximum number of items to return (1-50)'),
+    offset: z.number().min(0).optional().describe('Offset for pagination'),
+  },
+  handler: async (args, _extra: SpotifyHandlerExtra) => {
+    const { type, timeRange = 'medium_term', limit = 20, offset = 0 } = args;
+    try {
+      const config = await getValidConfig();
+      const params = new URLSearchParams({ time_range: timeRange, limit: String(limit), offset: String(offset) });
+      const response = await fetch(`https://api.spotify.com/v1/me/top/${type}?${params}`, {
+        headers: { Authorization: `Bearer ${config.accessToken}` },
+      });
+      if (!response.ok) throw new Error(await response.text());
+      const data = await response.json();
+      if (data.items.length === 0) return { content: [{ type: 'text', text: `No top ${type} found` }] };
+      const formatted = data.items
+        .map((item: any, i: number) => {
+          if (type === 'artists') return `${offset + i + 1}. ${item.name} - ID: ${item.id}`;
+          const artists = item.artists?.map((a: any) => a.name).join(', ');
+          return `${offset + i + 1}. "${item.name}" by ${artists} - ID: ${item.id}`;
+        })
+        .join('\n');
+      const rangeLabel: Record<string, string> = { short_term: '~4 weeks', medium_term: '~6 months', long_term: 'all time' };
+      return {
+        content: [{
+          type: 'text',
+          text: `# Your Top ${type === 'artists' ? 'Artists' : 'Tracks'} (${rangeLabel[timeRange]})\n\n${formatted}`,
+        }],
+      };
+    } catch (error) {
+      return { content: [{ type: 'text', text: `Error getting top ${type}: ${error instanceof Error ? error.message : String(error)}` }] };
+    }
+  },
+};
+
 const getCurrentUserProfile: tool<Record<string, never>> = {
   name: 'getCurrentUserProfile',
   description: 'Get profile information for the current authenticated Spotify user',
@@ -1288,6 +1336,7 @@ export const readTools = [
   getSavedAudiobooks,
   getSavedEpisodes,
   getSavedShows,
+  getUserTopItems,
   getCurrentUserProfile,
   getArtist,
   getArtistAlbums,
