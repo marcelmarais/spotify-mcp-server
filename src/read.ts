@@ -34,13 +34,13 @@ const searchSpotify: tool<{
     limit: z
       .number()
       .min(1)
-      .max(50)
+      .max(10)
       .optional()
-      .describe('Maximum number of results to return (10-50)'),
+      .describe('Maximum number of results to return (1-10)'),
   },
   handler: async (args, _extra: SpotifyHandlerExtra) => {
     const { query, type, limit } = args;
-    const limitValue = limit ?? 10;
+    const limitValue = Math.min(limit ?? 10, 10);
 
     try {
       const results = await handleSpotifyRequest(async (spotifyApi) => {
