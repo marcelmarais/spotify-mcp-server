@@ -12,7 +12,34 @@ const server = new McpServer({
 
 [...readTools, ...playTools, ...albumTools, ...playlistTools].forEach(
   (tool) => {
-    server.tool(tool.name, tool.description, tool.schema, tool.handler);
+    const safeHandler = tool.handler as (
+      args: unknown,
+      extra: unknown,
+    ) => Promise<{ content: Array<{ type: 'text'; text: string }> }> | {
+      content: Array<{ type: 'text'; text: string }>;
+    };
+
+    server.tool(
+      tool.name,
+      tool.description,
+      tool.schema,
+      async (args: unknown, extra: unknown) => {
+        try {
+          return await safeHandler(args, extra);
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          return {
+            content: [
+              {
+                type: 'text' as const,
+                text: `Error in ${tool.name}: ${message}`,
+              },
+            ],
+          };
+        }
+      },
+    );
   },
 );
 
