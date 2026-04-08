@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { SpotifyHandlerExtra, tool } from './types.js';
-import { handleSpotifyRequest } from './utils.js';
+import { handleSpotifyRequest, spotifyApiRequest } from './utils.js';
 
 const playMusic: tool<{
   uri: z.ZodOptional<z.ZodString>;
@@ -236,13 +236,16 @@ const addTracksToPlaylist: tool<{
     try {
       const trackUris = trackIds.map((id) => `spotify:track:${id}`);
 
-      await handleSpotifyRequest(async (spotifyApi) => {
-        await spotifyApi.playlists.addItemsToPlaylist(
-          playlistId,
-          trackUris,
-          position,
-        );
-      });
+      await spotifyApiRequest<{ snapshot_id: string }>(
+        `/playlists/${playlistId}/items`,
+        {
+          method: 'POST',
+          body: {
+            uris: trackUris,
+            ...(position !== undefined ? { position } : {}),
+          },
+        },
+      );
 
       return {
         content: [
