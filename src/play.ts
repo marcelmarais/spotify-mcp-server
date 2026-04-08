@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { SpotifyHandlerExtra, tool } from './types.js';
-import { handleSpotifyRequest } from './utils.js';
+import { formatDuration, handleSpotifyRequest } from './utils.js';
 
 const playMusic: tool<{
   uri: z.ZodOptional<z.ZodString>;
@@ -48,6 +48,15 @@ const playMusic: tool<{
     await handleSpotifyRequest(async (spotifyApi) => {
       const device = deviceId || '';
 
+      // When playing an album or playlist, turn off shuffle so it plays in order
+      if (type === 'album') {
+        try {
+          await spotifyApi.player.togglePlaybackShuffle(false, device);
+        } catch (_) {
+          // Ignore shuffle toggle errors (e.g. no active device yet)
+        }
+      }
+
       if (!spotifyUri) {
         await spotifyApi.player.startResumePlayback(device);
         return;
@@ -66,7 +75,7 @@ const playMusic: tool<{
       content: [
         {
           type: 'text',
-          text: `Started playing ${type || 'music'} ${id ? `(ID: ${id})` : ''}`,
+          text: `Started playing ${type || 'music'} ${id ? `(ID: ${id})` : ''}${type === 'album' ? ' (shuffle turned off)' : ''}`,
         },
       ],
     };
@@ -106,7 +115,8 @@ const skipToNext: tool<{
   deviceId: z.ZodOptional<z.ZodString>;
 }> = {
   name: 'skipToNext',
-  description: 'Skip to the next track in the current Spotify playback queue',
+  description:
+    'Skip to the next track in the current Spotify playback queue and display the new track info',
   schema: {
     deviceId: z
       .string()
@@ -116,18 +126,82 @@ const skipToNext: tool<{
   handler: async (args, _extra: SpotifyHandlerExtra) => {
     const { deviceId } = args;
 
-    await handleSpotifyRequest(async (spotifyApi) => {
-      await spotifyApi.player.skipToNext(deviceId || '');
-    });
+    try {
+      // Skip to next track
+      await handleSpotifyRequest(async (spotifyApi) => {
+        await spotifyApi.player.skipToNext(deviceId || '');
+      });
 
-    return {
-      content: [
-        {
-          type: 'text',
-          text: 'Skipped to next track',
-        },
-      ],
-    };
+      // Add a small delay to let Spotify catch up
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      // Fetch and display the now-playing track
+      const playback = await handleSpotifyRequest(async (spotifyApi) => {
+        return await spotifyApi.player.getPlaybackState();
+      });
+
+      if (!playback?.item) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: 'Skipped to next track\n\nNo track is currently playing',
+            },
+          ],
+        };
+      }
+
+      const item = playback.item as any;
+
+      // Check if it's a track
+      if (item.type === 'track' && item.artists && item.album) {
+        const artists = item.artists.map((a: any) => a.name).join(', ');
+        const album = item.album?.name || 'Unknown';
+        const duration = formatDuration(item.duration_ms);
+        const progress = formatDuration(playback.progress_ms || 0);
+
+        const device = playback.device;
+        const deviceInfo = device
+          ? `${device.name} (${device.type})`
+          : 'Unknown device';
+        const volume =
+          device?.volume_percent !== null &&
+          device?.volume_percent !== undefined
+            ? `${device.volume_percent}%`
+            : 'N/A';
+        const shuffle = playback.shuffle_state ? 'On' : 'Off';
+        const repeat = playback.repeat_state || 'off';
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `# Skipped to next track\n\n**Track**: "${item.name}"\n**Artist**: ${artists}\n**Album**: ${album}\n**Progress**: ${progress} / ${duration}\n**ID**: ${item.id}\n\n**Device**: ${deviceInfo}\n**Volume**: ${volume}\n**Shuffle**: ${shuffle} | **Repeat**: ${repeat}`,
+            },
+          ],
+        };
+      }
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: 'Skipped to next track\n\nCurrently playing item is not a track (might be a podcast episode)',
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error skipping to next track: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          },
+        ],
+      };
+    }
   },
 };
 
@@ -136,7 +210,7 @@ const skipToPrevious: tool<{
 }> = {
   name: 'skipToPrevious',
   description:
-    'Skip to the previous track in the current Spotify playback queue',
+    'Skip to the previous track in the current Spotify playback queue and display the new track info',
   schema: {
     deviceId: z
       .string()
@@ -146,18 +220,83 @@ const skipToPrevious: tool<{
   handler: async (args, _extra: SpotifyHandlerExtra) => {
     const { deviceId } = args;
 
-    await handleSpotifyRequest(async (spotifyApi) => {
-      await spotifyApi.player.skipToPrevious(deviceId || '');
-    });
+    try {
+      // Skip to previous track
+      await handleSpotifyRequest(async (spotifyApi) => {
+        await spotifyApi.player.skipToPrevious(deviceId || '');
+      });
 
-    return {
-      content: [
-        {
-          type: 'text',
-          text: 'Skipped to previous track',
-        },
-      ],
-    };
+      // Add a small delay to let Spotify catch up
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      // Fetch and display the now-playing track
+      const playback = await handleSpotifyRequest(async (spotifyApi) => {
+        return await spotifyApi.player.getPlaybackState();
+      });
+
+      if (!playback?.item) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: 'Skipped to previous track\n\nNo track is currently playing',
+            },
+          ],
+        };
+      }
+
+      const item = playback.item as any;
+
+      // Check if it's a track
+      if (item.type === 'track' && item.artists && item.album) {
+        const artists = item.artists.map((a: any) => a.name).join(', ');
+        const album = item.album?.name || 'Unknown';
+        const duration = formatDuration(item.duration_ms);
+        const progress = formatDuration(playback.progress_ms || 0);
+        const _isPlaying = playback.is_playing;
+
+        const device = playback.device;
+        const deviceInfo = device
+          ? `${device.name} (${device.type})`
+          : 'Unknown device';
+        const volume =
+          device?.volume_percent !== null &&
+          device?.volume_percent !== undefined
+            ? `${device.volume_percent}%`
+            : 'N/A';
+        const shuffle = playback.shuffle_state ? 'On' : 'Off';
+        const repeat = playback.repeat_state || 'off';
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `# Skipped to previous track\n\n**Track**: "${item.name}"\n**Artist**: ${artists}\n**Album**: ${album}\n**Progress**: ${progress} / ${duration}\n**ID**: ${item.id}\n\n**Device**: ${deviceInfo}\n**Volume**: ${volume}\n**Shuffle**: ${shuffle} | **Repeat**: ${repeat}`,
+            },
+          ],
+        };
+      }
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: 'Skipped to previous track\n\nCurrently playing item is not a track (might be a podcast episode)',
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error skipping to previous track: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          },
+        ],
+      };
+    }
   },
 };
 
@@ -496,6 +635,105 @@ const adjustVolume: tool<{
   },
 };
 
+const setShuffle: tool<{
+  state: z.ZodBoolean;
+  deviceId: z.ZodOptional<z.ZodString>;
+}> = {
+  name: 'setShuffle',
+  description:
+    'Turn shuffle on or off for the current playback. Requires Spotify Premium.',
+  schema: {
+    state: z.boolean().describe('true to turn shuffle on, false to turn it off'),
+    deviceId: z
+      .string()
+      .optional()
+      .describe('The Spotify device ID to set shuffle on'),
+  },
+  handler: async (args, _extra: SpotifyHandlerExtra) => {
+    const { state, deviceId } = args;
+
+    try {
+      await handleSpotifyRequest(async (spotifyApi) => {
+        await spotifyApi.player.togglePlaybackShuffle(state, deviceId || '');
+      });
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Shuffle turned ${state ? 'on' : 'off'}`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error setting shuffle: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          },
+        ],
+      };
+    }
+  },
+};
+
+const setRepeat: tool<{
+  state: z.ZodEnum<['off', 'track', 'context']>;
+  deviceId: z.ZodOptional<z.ZodString>;
+}> = {
+  name: 'setRepeat',
+  description:
+    'Set the repeat mode for playback. "off" disables repeat, "track" repeats the current track, "context" repeats the current album/playlist. Requires Spotify Premium.',
+  schema: {
+    state: z
+      .enum(['off', 'track', 'context'])
+      .describe('Repeat mode: "off", "track", or "context" (album/playlist)'),
+    deviceId: z
+      .string()
+      .optional()
+      .describe('The Spotify device ID to set repeat on'),
+  },
+  handler: async (args, _extra: SpotifyHandlerExtra) => {
+    const { state, deviceId } = args;
+
+    try {
+      await handleSpotifyRequest(async (spotifyApi) => {
+        await spotifyApi.player.setRepeatMode(state, deviceId || '');
+      });
+
+      const modeDescription =
+        state === 'off'
+          ? 'off'
+          : state === 'track'
+            ? 'on (current track)'
+            : 'on (album/playlist)';
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Repeat set to ${modeDescription}`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error setting repeat: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          },
+        ],
+      };
+    }
+  },
+};
+
 export const playTools = [
   playMusic,
   pausePlayback,
@@ -507,4 +745,6 @@ export const playTools = [
   addToQueue,
   setVolume,
   adjustVolume,
+  setShuffle,
+  setRepeat,
 ];
