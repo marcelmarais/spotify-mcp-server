@@ -605,6 +605,150 @@ const getAvailableDevices: tool<Record<string, never>> = {
   },
 };
 
+const saveUsersSavedTracks: tool<{
+  trackIds: z.ZodArray<z.ZodString>;
+}> = {
+  name: 'saveUsersSavedTracks',
+  description:
+    'Save one or more tracks to the user\'s "Liked Songs" library (max 40 per request)',
+  schema: {
+    trackIds: z
+      .array(z.string())
+      .max(40)
+      .describe('Array of Spotify track IDs to save (max 40)'),
+  },
+  handler: async (args, _extra: SpotifyHandlerExtra) => {
+    const { trackIds } = args;
+
+    if (trackIds.length === 0) {
+      return {
+        content: [{ type: 'text', text: 'Error: No track IDs provided' }],
+      };
+    }
+
+    try {
+      // Ensure token is fresh (handles auto-refresh if needed)
+      await createSpotifyApi();
+      const config = loadSpotifyConfig();
+
+      const uris = trackIds.map((id) => `spotify:track:${id}`).join(',');
+      const response = await fetch(
+        `https://api.spotify.com/v1/me/library?uris=${encodeURIComponent(uris)}`,
+        {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${config.accessToken}`,
+          },
+        },
+      );
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        throw new Error(`Spotify API error ${response.status}: ${errorData}`);
+      }
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Successfully saved ${trackIds.length} track${trackIds.length === 1 ? '' : 's'} to your Liked Songs`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error saving tracks to Liked Songs: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          },
+        ],
+      };
+    }
+  },
+};
+
+const saveNowPlayingToLikedSongs: tool<Record<string, never>> = {
+  name: 'saveNowPlayingToLikedSongs',
+  description:
+    'Save the currently playing track to the user\'s "Liked Songs" library',
+  schema: {},
+  handler: async (_args, _extra: SpotifyHandlerExtra) => {
+    try {
+      const playback = await handleSpotifyRequest(async (spotifyApi) => {
+        return await spotifyApi.player.getPlaybackState();
+      });
+
+      if (!playback?.item) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: 'Nothing is currently playing on Spotify',
+            },
+          ],
+        };
+      }
+
+      const item = playback.item;
+      if (!isTrack(item)) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: 'Currently playing item is not a track (might be a podcast episode)',
+            },
+          ],
+        };
+      }
+
+      // Ensure token is fresh (handles auto-refresh if needed)
+      await createSpotifyApi();
+      const config = loadSpotifyConfig();
+      const uri = `spotify:track:${item.id}`;
+
+      const response = await fetch(
+        `https://api.spotify.com/v1/me/library?uris=${encodeURIComponent(uri)}`,
+        {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${config.accessToken}`,
+          },
+        },
+      );
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        throw new Error(`Spotify API error ${response.status}: ${errorData}`);
+      }
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Saved now playing track to Liked Songs: "${item.name}" by ${item.artists
+              .map((a) => a.name)
+              .join(', ')}`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error saving currently playing track: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          },
+        ],
+      };
+    }
+  },
+};
+
 const removeUsersSavedTracks: tool<{
   trackIds: z.ZodArray<z.ZodString>;
 }> = {
@@ -677,6 +821,8 @@ export const readTools = [
   getPlaylistTracks,
   getRecentlyPlayed,
   getUsersSavedTracks,
+  saveUsersSavedTracks,
+  saveNowPlayingToLikedSongs,
   removeUsersSavedTracks,
   getQueue,
   getAvailableDevices,

@@ -15,7 +15,7 @@ export interface SpotifyConfig {
   redirectUri: string;
   accessToken?: string;
   refreshToken?: string;
-  expiresAt?: number; // Unix timestamp in milliseconds
+  expiresAt?: number;
 }
 
 export function loadSpotifyConfig(): SpotifyConfig {
@@ -48,44 +48,14 @@ export function saveSpotifyConfig(config: SpotifyConfig): void {
 
 let cachedSpotifyApi: SpotifyApi | null = null;
 
-export async function createSpotifyApi(): Promise<SpotifyApi> {
+export function createSpotifyApi(): SpotifyApi {
   const config = loadSpotifyConfig();
 
   if (config.accessToken && config.refreshToken) {
-    const now = Date.now();
-    const shouldRefresh = !config.expiresAt || config.expiresAt <= now;
-
-    if (shouldRefresh) {
-      console.log(
-        'Access token expired or missing expiration time, refreshing...',
-      );
-      try {
-        const tokens = await refreshAccessToken(config);
-        config.accessToken = tokens.access_token;
-        config.expiresAt = now + tokens.expires_in * 1000; // Convert seconds to milliseconds
-        saveSpotifyConfig(config);
-        console.log('Access token refreshed successfully');
-
-        // Clear cached API instance to force recreation with new token
-        cachedSpotifyApi = null;
-      } catch (error) {
-        console.error('Failed to refresh token:', error);
-        throw new Error(
-          'Failed to refresh access token. Please run "npm run auth" to re-authenticate.',
-        );
-      }
-    }
-
-    if (cachedSpotifyApi) {
-      return cachedSpotifyApi;
-    }
-
     const accessToken = {
       access_token: config.accessToken,
       token_type: 'Bearer',
-      expires_in: Math.floor(
-        ((config.expiresAt ?? now + 3600000) - now) / 1000,
-      ),
+      expires_in: 3600 * 24 * 30, // Default to 1 month
       refresh_token: config.refreshToken,
     };
 
@@ -93,8 +63,7 @@ export async function createSpotifyApi(): Promise<SpotifyApi> {
     return cachedSpotifyApi;
   }
 
-  // Fallback to client credentials if no user tokens available
-  cachedSpotifyApi = SpotifyApi.withClientCredentials(
+  const spotifyApi = SpotifyApi.withClientCredentials(
     config.clientId,
     config.clientSecret,
   );
@@ -121,11 +90,7 @@ function base64Encode(str: string): string {
 async function exchangeCodeForToken(
   code: string,
   config: SpotifyConfig,
-): Promise<{
-  access_token: string;
-  refresh_token: string;
-  expires_in: number;
-}> {
+): Promise<{ access_token: string; refresh_token: string }> {
   const tokenUrl = 'https://accounts.spotify.com/api/token';
   const authHeader = `Basic ${base64Encode(`${config.clientId}:${config.clientSecret}`)}`;
 
@@ -152,42 +117,6 @@ async function exchangeCodeForToken(
   return {
     access_token: data.access_token,
     refresh_token: data.refresh_token,
-    expires_in: data.expires_in || 3600,
-  };
-}
-
-async function refreshAccessToken(
-  config: SpotifyConfig,
-): Promise<{ access_token: string; expires_in: number }> {
-  if (!config.refreshToken) {
-    throw new Error('No refresh token available');
-  }
-
-  const tokenUrl = 'https://accounts.spotify.com/api/token';
-  const authHeader = `Basic ${base64Encode(`${config.clientId}:${config.clientSecret}`)}`;
-
-  const params = new URLSearchParams();
-  params.append('grant_type', 'refresh_token');
-  params.append('refresh_token', config.refreshToken);
-
-  const response = await fetch(tokenUrl, {
-    method: 'POST',
-    headers: {
-      Authorization: authHeader,
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: params,
-  });
-
-  if (!response.ok) {
-    const errorData = await response.text();
-    throw new Error(`Failed to refresh access token: ${errorData}`);
-  }
-
-  const data = await response.json();
-  return {
-    access_token: data.access_token,
-    expires_in: data.expires_in || 3600,
   };
 }
 
@@ -237,7 +166,7 @@ export async function authorizeSpotify(): Promise<void> {
     redirect_uri: config.redirectUri,
     scope: scopes.join(' '),
     state: state,
-    show_dialog: 'true',
+    show_dialog: 'false',
   });
 
   const authorizationUrl = `https://accounts.spotify.com/authorize?${authParams.toString()}`;
@@ -293,7 +222,7 @@ export async function authorizeSpotify(): Promise<void> {
 
           config.accessToken = tokens.access_token;
           config.refreshToken = tokens.refresh_token;
-          config.expiresAt = Date.now() + tokens.expires_in * 1000; // Convert seconds to milliseconds
+          config.expiresAt = Date.now() + 3600 * 1000; // Default to 1 hour
           saveSpotifyConfig(config);
 
           res.end(
@@ -352,7 +281,7 @@ export async function handleSpotifyRequest<T>(
   action: (spotifyApi: SpotifyApi) => Promise<T>,
 ): Promise<T> {
   try {
-    const spotifyApi = await createSpotifyApi();
+    const spotifyApi = createSpotifyApi();
     return await action(spotifyApi);
   } catch (error) {
     // Skip JSON parsing errors as these are actually successful operations
