@@ -6,6 +6,7 @@ import {
   formatDuration,
   handleSpotifyRequest,
   loadSpotifyConfig,
+  spotifyFetch,
 } from './utils.js';
 
 function isTrack(item: any): item is SpotifyTrack {
@@ -277,15 +278,10 @@ const getPlaylistTracks: tool<{
   handler: async (args, _extra: SpotifyHandlerExtra) => {
     const { playlistId, limit = 50, offset = 0 } = args;
 
-    const playlistTracks = await handleSpotifyRequest(async (spotifyApi) => {
-      return await spotifyApi.playlists.getPlaylistItems(
-        playlistId,
-        undefined,
-        undefined,
-        limit as MaxInt<50>,
-        offset,
-      );
-    });
+    const playlistTracks = await spotifyFetch<{
+      items: Array<{ item?: any; track?: any }>;
+      total: number;
+    }>(`/playlists/${playlistId}/items`, { query: { limit, offset } });
 
     if ((playlistTracks.items?.length ?? 0) === 0) {
       return {
@@ -299,12 +295,13 @@ const getPlaylistTracks: tool<{
     }
 
     const formattedTracks = playlistTracks.items
-      .map((item, i) => {
-        const { track } = item;
+      .map((entry, i) => {
+        // Spotify Feb 2026 migration: response uses `item` instead of `track`.
+        const track = entry.item ?? entry.track;
         if (!track) return `${offset + i + 1}. [Removed track]`;
 
         if (isTrack(track)) {
-          const artists = track.artists.map((a) => a.name).join(', ');
+          const artists = track.artists.map((a: { name: string }) => a.name).join(', ');
           const duration = formatDuration(track.duration_ms);
           return `${offset + i + 1}. "${track.name}" by ${artists} (${duration}) - ID: ${track.id}`;
         }

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { SpotifyHandlerExtra, tool } from './types.js';
-import { handleSpotifyRequest } from './utils.js';
+import { handleSpotifyRequest, spotifyFetch } from './utils.js';
 
 const getPlaylist: tool<{
   playlistId: z.ZodString;
@@ -175,11 +175,12 @@ const removeTracksFromPlaylist: tool<{
     try {
       const tracks = trackIds.map((id) => ({ uri: `spotify:track:${id}` }));
 
-      await handleSpotifyRequest(async (spotifyApi) => {
-        await spotifyApi.playlists.removeItemsFromPlaylist(playlistId, {
+      await spotifyFetch(`/playlists/${playlistId}/items`, {
+        method: 'DELETE',
+        body: {
           tracks,
           ...(snapshotId ? { snapshot_id: snapshotId } : {}),
-        });
+        },
       });
 
       return {
@@ -246,13 +247,14 @@ const reorderPlaylistItems: tool<{
       args;
 
     try {
-      await handleSpotifyRequest(async (spotifyApi) => {
-        await spotifyApi.playlists.updatePlaylistItems(playlistId, {
+      await spotifyFetch(`/playlists/${playlistId}/items`, {
+        method: 'PUT',
+        body: {
           range_start: rangeStart,
           insert_before: insertBefore,
           ...(rangeLength !== undefined ? { range_length: rangeLength } : {}),
           ...(snapshotId ? { snapshot_id: snapshotId } : {}),
-        });
+        },
       });
 
       const count = rangeLength ?? 1;

@@ -102,6 +102,56 @@ export async function createSpotifyApi(): Promise<SpotifyApi> {
   return cachedSpotifyApi;
 }
 
+// Direct fetch against the Spotify Web API. Used for endpoints that the
+// pinned @spotify/web-api-ts-sdk targets at deprecated paths (Feb 2026
+// migration: /playlists/{id}/tracks -> /items, POST /users/{id}/playlists
+// -> POST /me/playlists). Reuses the same config + refresh logic as the SDK
+// path so tokens stay in sync.
+export async function spotifyFetch<T = unknown>(
+  path: string,
+  init: { method?: string; body?: unknown; query?: Record<string, string | number | undefined> } = {},
+): Promise<T> {
+  const config = loadSpotifyConfig();
+  if (!(config.accessToken && config.refreshToken)) {
+    throw new Error('Spotify is not authenticated. Run "npm run auth" first.');
+  }
+
+  const now = Date.now();
+  if (!config.expiresAt || config.expiresAt <= now) {
+    const tokens = await refreshAccessToken(config);
+    config.accessToken = tokens.access_token;
+    config.expiresAt = now + tokens.expires_in * 1000;
+    saveSpotifyConfig(config);
+    cachedSpotifyApi = null;
+  }
+
+  const url = new URL(`https://api.spotify.com/v1${path}`);
+  if (init.query) {
+    for (const [k, v] of Object.entries(init.query)) {
+      if (v !== undefined) url.searchParams.set(k, String(v));
+    }
+  }
+
+  const res = await fetch(url.toString(), {
+    method: init.method ?? 'GET',
+    headers: {
+      Authorization: `Bearer ${config.accessToken}`,
+      ...(init.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+    },
+    body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Spotify API ${res.status} ${res.statusText}: ${text}`);
+  }
+
+  if (res.status === 204) return undefined as T;
+  const ct = res.headers.get('content-type') ?? '';
+  if (!ct.includes('application/json')) return undefined as T;
+  return (await res.json()) as T;
+}
+
 function generateRandomString(length: number): string {
   const array = new Uint8Array(length);
   crypto.getRandomValues(array);
