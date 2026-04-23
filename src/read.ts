@@ -81,11 +81,16 @@ const searchSpotify: tool<{
       } else if (type === 'playlist' && results.playlists) {
         formattedResults = results.playlists.items
           .map((playlist, i) => {
-            return `${i + 1}. "${playlist?.name ?? 'Unknown Playlist'} (${
-              playlist?.description ?? 'No description'
-            } tracks)" by ${playlist?.owner?.display_name} - ID: ${
-              playlist?.id
-            }`;
+            // The SDK types playlist search results as PlaylistBase, which omits
+            // `tracks` even though the Spotify API response does include it.
+            const p = playlist as
+              | (typeof playlist & { tracks?: { total?: number } })
+              | null;
+            const name = p?.name ?? 'Unknown Playlist';
+            const owner = p?.owner?.display_name ?? 'Unknown';
+            const trackCount = p?.tracks?.total ?? 0;
+            const description = p?.description ? ` — ${p.description}` : '';
+            return `${i + 1}. "${name}" by ${owner} (${trackCount} tracks)${description} - ID: ${p?.id}`;
           })
           .join('\n');
       }

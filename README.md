@@ -172,10 +172,10 @@ A lightweight [Model Context Protocol (MCP)](https://modelcontextprotocol.io) se
    - **Description**: Add tracks to an existing Spotify playlist
    - **Parameters**:
      - `playlistId` (string): ID of the playlist
-     - `trackUris` (array): Array of track URIs or IDs to add
+     - `trackIds` (array): Array of Spotify track IDs to add
      - `position` (number, optional): Position to insert tracks
-   - **Returns**: Success status and snapshot ID
-   - **Example**: `addTracksToPlaylist({ playlistId: "3cEYpjA9oz9GiPac4AsH4n", trackUris: ["spotify:track:4iV5W9uYEdYUVa79Axb7Rh"] })`
+   - **Returns**: Success status
+   - **Example**: `addTracksToPlaylist({ playlistId: "3cEYpjA9oz9GiPac4AsH4n", trackIds: ["4iV5W9uYEdYUVa79Axb7Rh"] })`
 
 8. **addToQueue**
 
@@ -294,18 +294,9 @@ A lightweight [Model Context Protocol (MCP)](https://modelcontextprotocol.io) se
 
 ### Prerequisites
 
-- Node.js v16+
+- Node.js v18+
 - A Spotify Premium account
 - A registered Spotify Developer application
-
-### Installation
-
-```bash
-git clone https://github.com/marcelmarais/spotify-mcp-server.git
-cd spotify-mcp-server
-npm install
-npm run build
-```
 
 ### Creating a Spotify Developer Application
 
@@ -319,16 +310,9 @@ npm run build
 8. Click "Edit Settings" and add a Redirect URI (e.g., `http://127.0.0.1:8888/callback`)
 9. Save your changes
 
-### Spotify API Configuration
+### Config file
 
-Create a `spotify-config.json` file in the project root (you can copy and modify the provided example):
-
-```bash
-# Copy the example config file
-cp spotify-config.example.json spotify-config.json
-```
-
-Then edit the file with your credentials:
+Create a `spotify-config.json` with your credentials:
 
 ```json
 {
@@ -338,74 +322,75 @@ Then edit the file with your credentials:
 }
 ```
 
-### Authentication Process
+The server looks for the config file in this order:
 
-The Spotify API uses OAuth 2.0 for authentication. Follow these steps to authenticate your application:
+1. `$SPOTIFY_CONFIG_PATH` (if set)
+2. `./spotify-config.json` (current working directory)
+3. `<repo>/spotify-config.json` (when run from a checkout)
+4. `$XDG_CONFIG_HOME/spotify-mcp-server/spotify-config.json`, falling back to `~/.config/spotify-mcp-server/spotify-config.json`
 
-1. Run the authentication script:
+The tokens populated by the auth flow get written back to whichever path was resolved, so **the same path must be writable** by the MCP server at runtime (that's where refreshed access tokens are persisted).
+
+### Authentication
+
+Run the one-time OAuth flow to fetch and save access/refresh tokens:
 
 ```bash
+# Install from npm / run without cloning
+npx -y spotify-mcp-server auth
+
+# Or, from a clone
+npm install
 npm run auth
 ```
 
-2. The script will generate an authorization URL. Open this URL in your web browser.
+The script opens your browser, you authorize the Spotify app, and the tokens are written back to the config file. After this you never need to run `auth` again — the server refreshes the access token automatically (the refresh token is long-lived).
 
-3. You'll be prompted to log in to Spotify and authorize your application.
+## Integrating with Claude Desktop, Cursor, and VS Code
 
-4. After authorization, Spotify will redirect you to your specified redirect URI with a code parameter in the URL.
-
-5. The authentication script will automatically exchange this code for access and refresh tokens.
-
-6. These tokens will be saved to your `spotify-config.json` file, which will now look something like:
+### Recommended: `npx` (no clone required)
 
 ```json
 {
-  "clientId": "your-client-id",
-  "clientSecret": "your-client-secret",
-  "redirectUri": "http://localhost:8888/callback",
-  "accessToken": "BQAi9Pn...kKQ",
-  "refreshToken": "AQDQcj...7w",
-  "expiresAt": 1677889354671
+  "mcpServers": {
+    "spotify": {
+      "command": "npx",
+      "args": ["-y", "spotify-mcp-server"],
+      "env": {
+        "SPOTIFY_CONFIG_PATH": "/absolute/path/to/spotify-config.json"
+      }
+    }
+  }
 }
 ```
 
-**Note**: The `expiresAt` field is a Unix timestamp (in milliseconds) indicating when the access token expires.
+Set `SPOTIFY_CONFIG_PATH` to an absolute location under your home directory so the server can both read credentials and write refreshed tokens. If you've already placed the file at `~/.config/spotify-mcp-server/spotify-config.json`, the `env` block isn't needed.
 
-7. **Automatic Token Refresh**: The server will automatically refresh the access token when it expires (typically after 1 hour). The refresh happens transparently using the `refreshToken`, so you don't need to re-authenticate manually. If the refresh fails, you'll need to run `npm run auth` again to re-authenticate.
+You can also pin a version (`spotify-mcp-server@1.0.0`) or point at a fork via a git URL (`npx -y github:marcelmarais/spotify-mcp-server`).
 
-## Integrating with Claude Desktop, Cursor, and VsCode [Via Cline model extension](https://marketplace.visualstudio.com/items/?itemName=saoudrizwan.claude-dev)
-
-To use your MCP server with Claude Desktop, add it to your Claude configuration:
+### Local clone
 
 ```json
 {
   "mcpServers": {
     "spotify": {
       "command": "node",
-      "args": ["spotify-mcp-server/build/index.js"]
+      "args": ["/absolute/path/to/spotify-mcp-server/build/index.js"]
     }
   }
 }
 ```
 
-For Cursor, go to the MCP tab in `Cursor Settings` (command + shift + J). Add a server with this command:
-
-```bash
-node path/to/spotify-mcp-server/build/index.js
-```
-
-To set up your MCP correctly with Cline ensure you have the following file configuration set `cline_mcp_settings.json`:
+For Cline (`cline_mcp_settings.json`) the shape is the same; add tool names you trust to `autoApprove`:
 
 ```json
 {
   "mcpServers": {
     "spotify": {
-      "command": "node",
-      "args": ["~/../spotify-mcp-server/build/index.js"],
-      "autoApprove": ["getListeningHistory", "getNowPlaying"]
+      "command": "npx",
+      "args": ["-y", "spotify-mcp-server"],
+      "autoApprove": ["getNowPlaying", "getRecentlyPlayed"]
     }
   }
 }
 ```
-
-You can add additional tools to the auto approval array to run the tools without intervention.

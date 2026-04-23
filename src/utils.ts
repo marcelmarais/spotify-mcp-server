@@ -1,13 +1,13 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
+import os from 'node:os';
 import path from 'node:path';
 import { URL, fileURLToPath } from 'node:url';
 import { SpotifyApi } from '@spotify/web-api-ts-sdk';
 import open from 'open';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const CONFIG_FILE = path.join(__dirname, '../spotify-config.json');
 
 export interface SpotifyConfig {
   clientId: string;
@@ -18,15 +18,45 @@ export interface SpotifyConfig {
   expiresAt?: number; // Unix timestamp in milliseconds
 }
 
+// stdout is reserved for the MCP JSON-RPC stream over stdio transport; any stray
+// write corrupts the protocol. Route all diagnostic output to stderr.
+function log(...args: unknown[]): void {
+  console.error(...args);
+}
+
+function defaultConfigPath(): string {
+  const xdg = process.env.XDG_CONFIG_HOME;
+  const base = xdg && xdg.length > 0 ? xdg : path.join(os.homedir(), '.config');
+  return path.join(base, 'spotify-mcp-server', 'spotify-config.json');
+}
+
+export function resolveConfigPath(): string {
+  const override = process.env.SPOTIFY_CONFIG_PATH;
+  if (override && override.length > 0) return path.resolve(override);
+
+  // Back-compat: prefer an existing cwd-local or repo-local file if present,
+  // otherwise fall back to the per-user XDG location.
+  const cwdLocal = path.resolve(process.cwd(), 'spotify-config.json');
+  if (fs.existsSync(cwdLocal)) return cwdLocal;
+
+  const repoLocal = path.join(__dirname, '../spotify-config.json');
+  if (fs.existsSync(repoLocal)) return repoLocal;
+
+  return defaultConfigPath();
+}
+
 export function loadSpotifyConfig(): SpotifyConfig {
-  if (!fs.existsSync(CONFIG_FILE)) {
+  const configFile = resolveConfigPath();
+  if (!fs.existsSync(configFile)) {
     throw new Error(
-      `Spotify configuration file not found at ${CONFIG_FILE}. Please create one with clientId, clientSecret, and redirectUri.`,
+      `Spotify configuration file not found at ${configFile}. ` +
+        'Set SPOTIFY_CONFIG_PATH or create the file with clientId, clientSecret, and redirectUri. ' +
+        'Run `npx spotify-mcp-server auth` (or `npm run auth` in a clone) to authenticate.',
     );
   }
 
   try {
-    const config = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+    const config = JSON.parse(fs.readFileSync(configFile, 'utf8'));
     if (!(config.clientId && config.clientSecret && config.redirectUri)) {
       throw new Error(
         'Spotify configuration must include clientId, clientSecret, and redirectUri.',
@@ -35,7 +65,7 @@ export function loadSpotifyConfig(): SpotifyConfig {
     return config;
   } catch (error) {
     throw new Error(
-      `Failed to parse Spotify configuration: ${
+      `Failed to parse Spotify configuration at ${configFile}: ${
         error instanceof Error ? error.message : String(error)
       }`,
     );
@@ -43,7 +73,9 @@ export function loadSpotifyConfig(): SpotifyConfig {
 }
 
 export function saveSpotifyConfig(config: SpotifyConfig): void {
-  fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), 'utf8');
+  const configFile = resolveConfigPath();
+  fs.mkdirSync(path.dirname(configFile), { recursive: true });
+  fs.writeFileSync(configFile, JSON.stringify(config, null, 2), 'utf8');
 }
 
 let cachedSpotifyApi: SpotifyApi | null = null;
@@ -56,22 +88,20 @@ export async function createSpotifyApi(): Promise<SpotifyApi> {
     const shouldRefresh = !config.expiresAt || config.expiresAt <= now;
 
     if (shouldRefresh) {
-      console.log(
-        'Access token expired or missing expiration time, refreshing...',
-      );
+      log('Access token expired or missing expiration time, refreshing...');
       try {
         const tokens = await refreshAccessToken(config);
         config.accessToken = tokens.access_token;
         config.expiresAt = now + tokens.expires_in * 1000; // Convert seconds to milliseconds
         saveSpotifyConfig(config);
-        console.log('Access token refreshed successfully');
+        log('Access token refreshed successfully');
 
         // Clear cached API instance to force recreation with new token
         cachedSpotifyApi = null;
       } catch (error) {
-        console.error('Failed to refresh token:', error);
+        log('Failed to refresh token:', error);
         throw new Error(
-          'Failed to refresh access token. Please run "npm run auth" to re-authenticate.',
+          'Failed to refresh access token. Please re-run the auth command to re-authenticate.',
         );
       }
     }
@@ -226,9 +256,6 @@ export async function authorizeSpotify(): Promise<void> {
     'user-library-read',
     'user-library-modify',
     'user-read-recently-played',
-    'user-modify-playback-state',
-    'user-read-playback-state',
-    'user-read-currently-playing',
   ];
 
   const authParams = new URLSearchParams({

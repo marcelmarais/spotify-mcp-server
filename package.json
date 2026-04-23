@@ -2,19 +2,25 @@
   "type": "module",
   "name": "spotify-mcp-server",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "build/index.js",
   "bin": {
-    "spotify-mcp": "./build/index.js"
+    "spotify-mcp": "build/index.js",
+    "spotify-mcp-server": "build/index.js"
   },
   "scripts": {
     "build": "tsc && node -e \"require('fs').chmodSync('build/index.js', '755')\"",
-    "auth": "tsc && node build/auth.js",
+    "prepare": "tsc && node -e \"require('fs').chmodSync('build/index.js', '755')\"",
+    "auth": "npm run build && node build/index.js auth",
+    "start": "node build/index.js",
     "lint": "biome check --diagnostic-level=warn --error-on-warnings",
     "lint:fix": "biome check --write --unsafe --organize-imports-enabled=true",
     "typecheck": "tsc --noEmit"
   },
-  "files": ["build"],
-  "keywords": [],
+  "files": ["build", "spotify-config.example.json"],
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": ["mcp", "spotify", "model-context-protocol", "claude", "cursor"],
   "author": "Marcel Marais",
   "description": "A Model Context Protocol server for Spotify integration",
   "dependencies": {
