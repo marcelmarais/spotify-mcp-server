@@ -48,6 +48,77 @@ export function saveSpotifyConfig(config: SpotifyConfig): void {
 
 let cachedSpotifyApi: SpotifyApi | null = null;
 
+/**
+ * Direct Spotify Web API fetch helper.
+ * Used to bypass @spotify/web-api-ts-sdk methods that hit deprecated endpoints
+ * (e.g. /playlists/{id}/tracks which was retired in the March 2026 API migration
+ * for new Development Mode apps; replacement is /playlists/{id}/items).
+ *
+ * Handles token loading and refresh transparently.
+ */
+export async function spotifyFetch<T = unknown>(
+  endpoint: string,
+  options: {
+    method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
+    body?: unknown;
+    query?: Record<string, string | number | undefined>;
+  } = {},
+): Promise<T> {
+  const { method = 'GET', body, query } = options;
+  const config = loadSpotifyConfig();
+
+  // Refresh token if expired
+  if (config.accessToken && config.refreshToken) {
+    const now = Date.now();
+    if (!config.expiresAt || config.expiresAt <= now) {
+      const tokens = await refreshAccessToken(config);
+      config.accessToken = tokens.access_token;
+      config.expiresAt = now + tokens.expires_in * 1000;
+      saveSpotifyConfig(config);
+      cachedSpotifyApi = null;
+    }
+  }
+
+  if (!config.accessToken) {
+    throw new Error(
+      'No access token available. Run "npm run auth" to authenticate.',
+    );
+  }
+
+  // Build URL with query string
+  const cleanEndpoint = endpoint.startsWith('/') ? endpoint.slice(1) : endpoint;
+  let url = `https://api.spotify.com/v1/${cleanEndpoint}`;
+  if (query) {
+    const qs = new URLSearchParams();
+    for (const [k, v] of Object.entries(query)) {
+      if (v !== undefined && v !== null) qs.append(k, String(v));
+    }
+    const qsStr = qs.toString();
+    if (qsStr) url += `?${qsStr}`;
+  }
+
+  const response = await fetch(url, {
+    method,
+    headers: {
+      Authorization: `Bearer ${config.accessToken}`,
+      ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+    },
+    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+  });
+
+  if (!response.ok) {
+    const errBody = await response.text();
+    throw new Error(
+      `Spotify API ${method} ${url} failed (${response.status}): ${errBody}`,
+    );
+  }
+
+  // Some endpoints (DELETE, PUT) return empty body
+  const text = await response.text();
+  if (!text) return undefined as T;
+  return JSON.parse(text) as T;
+}
+
 export async function createSpotifyApi(): Promise<SpotifyApi> {
   const config = loadSpotifyConfig();
 
