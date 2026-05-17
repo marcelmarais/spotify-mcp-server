@@ -13,15 +13,21 @@ const playMusic: tool<{
   schema: {
     uri: z
       .string()
+      .max(500)
       .optional()
       .describe('The Spotify URI to play (overrides type and id)'),
     type: z
       .enum(['track', 'album', 'artist', 'playlist'])
       .optional()
       .describe('The type of item to play'),
-    id: z.string().optional().describe('The Spotify ID of the item to play'),
+    id: z
+      .string()
+      .max(500)
+      .optional()
+      .describe('The Spotify ID of the item to play'),
     deviceId: z
       .string()
+      .max(500)
       .optional()
       .describe('The Spotify device ID to play on'),
   },
@@ -81,6 +87,7 @@ const pausePlayback: tool<{
   schema: {
     deviceId: z
       .string()
+      .max(500)
       .optional()
       .describe('The Spotify device ID to pause playback on'),
   },
@@ -110,6 +117,7 @@ const skipToNext: tool<{
   schema: {
     deviceId: z
       .string()
+      .max(500)
       .optional()
       .describe('The Spotify device ID to skip on'),
   },
@@ -140,6 +148,7 @@ const skipToPrevious: tool<{
   schema: {
     deviceId: z
       .string()
+      .max(500)
       .optional()
       .describe('The Spotify device ID to skip on'),
   },
@@ -169,9 +178,10 @@ const createPlaylist: tool<{
   name: 'createPlaylist',
   description: 'Create a new playlist on Spotify',
   schema: {
-    name: z.string().describe('The name of the playlist'),
+    name: z.string().max(500).describe('The name of the playlist'),
     description: z
       .string()
+      .max(500)
       .optional()
       .describe('The description of the playlist'),
     public: z
@@ -211,8 +221,10 @@ const addTracksToPlaylist: tool<{
   name: 'addTracksToPlaylist',
   description: 'Add tracks to a Spotify playlist',
   schema: {
-    playlistId: z.string().describe('The Spotify ID of the playlist'),
-    trackIds: z.array(z.string()).describe('Array of Spotify track IDs to add'),
+    playlistId: z.string().max(500).describe('The Spotify ID of the playlist'),
+    trackIds: z
+      .array(z.string().max(500))
+      .describe('Array of Spotify track IDs to add'),
     position: z
       .number()
       .nonnegative()
@@ -278,6 +290,7 @@ const resumePlayback: tool<{
   schema: {
     deviceId: z
       .string()
+      .max(500)
       .optional()
       .describe('The Spotify device ID to resume playback on'),
   },
@@ -310,15 +323,21 @@ const addToQueue: tool<{
   schema: {
     uri: z
       .string()
+      .max(500)
       .optional()
       .describe('The Spotify URI to play (overrides type and id)'),
     type: z
       .enum(['track', 'album', 'artist', 'playlist'])
       .optional()
       .describe('The type of item to play'),
-    id: z.string().optional().describe('The Spotify ID of the item to play'),
+    id: z
+      .string()
+      .max(500)
+      .optional()
+      .describe('The Spotify ID of the item to play'),
     deviceId: z
       .string()
+      .max(500)
       .optional()
       .describe('The Spotify device ID to add the track to'),
   },
@@ -375,6 +394,7 @@ const setVolume: tool<{
       .describe('The volume to set (0-100)'),
     deviceId: z
       .string()
+      .max(500)
       .optional()
       .describe('The Spotify device ID to set volume on'),
   },
@@ -429,6 +449,7 @@ const adjustVolume: tool<{
       ),
     deviceId: z
       .string()
+      .max(500)
       .optional()
       .describe('The Spotify device ID to adjust volume on'),
   },

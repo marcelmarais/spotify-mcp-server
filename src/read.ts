@@ -27,7 +27,7 @@ const searchSpotify: tool<{
   name: 'searchSpotify',
   description: 'Search for tracks, albums, artists, or playlists on Spotify',
   schema: {
-    query: z.string().describe('The search query'),
+    query: z.string().max(500).describe('The search query'),
     type: z
       .enum(['track', 'album', 'artist', 'playlist'])
       .describe(
@@ -262,7 +262,7 @@ const getPlaylistTracks: tool<{
   name: 'getPlaylistTracks',
   description: 'Get a list of tracks in a Spotify playlist',
   schema: {
-    playlistId: z.string().describe('The Spotify ID of the playlist'),
+    playlistId: z.string().max(500).describe('The Spotify ID of the playlist'),
     limit: z
       .number()
       .min(1)
@@ -617,7 +617,7 @@ const removeUsersSavedTracks: tool<{
     'Remove one or more tracks from the user\'s "Liked Songs" library (max 40 per request)',
   schema: {
     trackIds: z
-      .array(z.string())
+      .array(z.string().max(500))
       .max(40)
       .describe('Array of Spotify track IDs to remove (max 40)'),
   },
