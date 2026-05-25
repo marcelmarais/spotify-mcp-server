@@ -1,6 +1,16 @@
 import type { MaxInt } from '@spotify/web-api-ts-sdk';
 import { z } from 'zod';
-import type { SpotifyHandlerExtra, SpotifyTrack, tool } from './types.js';
+import type {
+  SpotifyEpisode,
+  SpotifyEpisodesResponse,
+  SpotifyHandlerExtra,
+  SpotifySearchEpisodesResponse,
+  SpotifySearchShowsResponse,
+  SpotifyShow,
+  SpotifySimplifiedEpisode,
+  SpotifyTrack,
+  tool,
+} from './types.js';
 import {
   createSpotifyApi,
   formatDuration,
@@ -19,76 +29,136 @@ function isTrack(item: any): item is SpotifyTrack {
   );
 }
 
+const SEARCH_TYPES = [
+  'track',
+  'album',
+  'artist',
+  'playlist',
+  'episode',
+  'show',
+] as const;
+type SearchType = (typeof SEARCH_TYPES)[number];
+
+function formatEpisode(ep: SpotifyEpisode, i: number): string {
+  const duration = formatDuration(ep.duration_ms);
+  const date = ep.release_date ? `, ${ep.release_date}` : '';
+  const showName = ep.show?.name ?? 'Unknown show';
+  return `${i + 1}. "${ep.name}" — ${showName} (${duration}${date}) - ID: ${ep.id}`;
+}
+
+function formatShow(show: SpotifyShow, i: number): string {
+  return `${i + 1}. "${show.name}" by ${show.publisher} (${show.total_episodes} episodes) - ID: ${show.id}`;
+}
+
 const searchSpotify: tool<{
   query: z.ZodString;
-  type: z.ZodEnum<['track', 'album', 'artist', 'playlist']>;
+  type: z.ZodEnum<[SearchType, ...SearchType[]]>;
   limit: z.ZodOptional<z.ZodNumber>;
 }> = {
   name: 'searchSpotify',
-  description: 'Search for tracks, albums, artists, or playlists on Spotify',
+  description:
+    'Search for tracks, albums, artists, playlists, podcast episodes, or shows on Spotify. ' +
+    'For episodes and shows, the query matches against title, description, and publisher. ' +
+    'Use type "episode" to find individual podcast episodes by topic or guest name, ' +
+    'and type "show" to find podcast series.',
   schema: {
-    query: z.string().describe('The search query'),
-    type: z
-      .enum(['track', 'album', 'artist', 'playlist'])
+    query: z
+      .string()
       .describe(
-        'The type of item to search for either track, album, artist, or playlist',
+        'The search query. Matches title, description, and publisher for podcasts.',
+      ),
+    type: z
+      .enum(SEARCH_TYPES)
+      .describe(
+        'The type of item to search for: track, album, artist, playlist, episode (podcast episode), or show (podcast series)',
       ),
     limit: z
       .number()
       .min(1)
       .max(50)
       .optional()
-      .describe('Maximum number of results to return (10-50)'),
+      .describe('Maximum number of results to return (default: 10, max: 50)'),
   },
   handler: async (args, _extra: SpotifyHandlerExtra) => {
     const { query, type, limit } = args;
     const limitValue = limit ?? 10;
 
     try {
-      const results = await handleSpotifyRequest(async (spotifyApi) => {
-        return await spotifyApi.search(
-          query,
-          [type],
-          undefined,
-          limitValue as MaxInt<50>,
-        );
-      });
-
       let formattedResults = '';
 
-      if (type === 'track' && results.tracks) {
-        formattedResults = results.tracks.items
-          .map((track, i) => {
-            const artists = track.artists.map((a) => a.name).join(', ');
-            const duration = formatDuration(track.duration_ms);
-            return `${i + 1}. "${
-              track.name
-            }" by ${artists} (${duration}) - ID: ${track.id}`;
-          })
+      if (type === 'episode') {
+        // Search returns SimplifiedEpisodeObject (no `show` field).
+        // Batch-fetch full episode objects to include show info.
+        const searchResults = await spotifyFetch<SpotifySearchEpisodesResponse>(
+          'search',
+          {
+            query: { q: query, type, limit: limitValue, market: 'from_token' },
+          },
+        );
+        const ids = searchResults.episodes.items
+          .filter((ep): ep is SpotifySimplifiedEpisode => ep !== null)
+          .map((ep) => ep.id)
+          .join(',');
+        if (!ids) {
+          formattedResults = '';
+        } else {
+          const full = await spotifyFetch<SpotifyEpisodesResponse>('episodes', {
+            query: { ids, market: 'from_token' },
+          });
+          formattedResults = full.episodes
+            .filter((ep): ep is SpotifyEpisode => ep !== null)
+            .map(formatEpisode)
+            .join('\n');
+        }
+      } else if (type === 'show') {
+        const results = await spotifyFetch<SpotifySearchShowsResponse>(
+          'search',
+          {
+            query: { q: query, type, limit: limitValue, market: 'from_token' },
+          },
+        );
+        formattedResults = results.shows.items
+          .filter((show): show is SpotifyShow => show !== null)
+          .map(formatShow)
           .join('\n');
-      } else if (type === 'album' && results.albums) {
-        formattedResults = results.albums.items
-          .map((album, i) => {
-            const artists = album.artists.map((a) => a.name).join(', ');
-            return `${i + 1}. "${album.name}" by ${artists} - ID: ${album.id}`;
-          })
-          .join('\n');
-      } else if (type === 'artist' && results.artists) {
-        formattedResults = results.artists.items
-          .map((artist, i) => {
-            return `${i + 1}. ${artist.name} - ID: ${artist.id}`;
-          })
-          .join('\n');
-      } else if (type === 'playlist' && results.playlists) {
-        formattedResults = results.playlists.items
-          .map((playlist, i) => {
-            return `${i + 1}. "${playlist?.name ?? 'Unknown Playlist'} (${
-              playlist?.description ?? 'No description'
-            } tracks)" by ${playlist?.owner?.display_name} - ID: ${
-              playlist?.id
-            }`;
-          })
-          .join('\n');
+      } else {
+        const results = await handleSpotifyRequest(async (spotifyApi) => {
+          return await spotifyApi.search(
+            query,
+            [type],
+            undefined,
+            limitValue as MaxInt<50>,
+          );
+        });
+
+        if (type === 'track' && results.tracks) {
+          formattedResults = results.tracks.items
+            .map((track, i) => {
+              const artists = track.artists.map((a) => a.name).join(', ');
+              const duration = formatDuration(track.duration_ms);
+              return `${i + 1}. "${track.name}" by ${artists} (${duration}) - ID: ${track.id}`;
+            })
+            .join('\n');
+        } else if (type === 'album' && results.albums) {
+          formattedResults = results.albums.items
+            .map((album, i) => {
+              const artists = album.artists.map((a) => a.name).join(', ');
+              return `${i + 1}. "${album.name}" by ${artists} - ID: ${album.id}`;
+            })
+            .join('\n');
+        } else if (type === 'artist' && results.artists) {
+          formattedResults = results.artists.items
+            .map((artist, i) => `${i + 1}. ${artist.name} - ID: ${artist.id}`)
+            .join('\n');
+        } else if (type === 'playlist' && results.playlists) {
+          formattedResults = results.playlists.items
+            .map((playlist, i) => {
+              return `${i + 1}. "${playlist?.name ?? 'Unknown Playlist'} (${
+                playlist?.description ?? 'No description'
+              } tracks)" by ${playlist?.owner?.display_name} - ID: ${playlist?.id}`;
+            })
+            .join('\n');
+        }
       }
 
       return {
@@ -107,9 +177,7 @@ const searchSpotify: tool<{
         content: [
           {
             type: 'text',
-            text: `Error searching for ${type}s: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            text: `Error searching for ${type}s: ${error instanceof Error ? error.message : String(error)}`,
           },
         ],
       };

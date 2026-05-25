@@ -209,38 +209,43 @@ const addTracksToPlaylist: tool<{
   position: z.ZodOptional<z.ZodNumber>;
 }> = {
   name: 'addTracksToPlaylist',
-  description: 'Add tracks to a Spotify playlist',
+  description:
+    'Add tracks or podcast episodes to a Spotify playlist. ' +
+    'Accepts Spotify track IDs, episode IDs, or full Spotify URIs (e.g. spotify:episode:xxx).',
   schema: {
     playlistId: z.string().describe('The Spotify ID of the playlist'),
-    trackIds: z.array(z.string()).describe('Array of Spotify track IDs to add'),
+    trackIds: z
+      .array(z.string())
+      .describe(
+        'Array of Spotify IDs or URIs to add. ' +
+          'Plain IDs are assumed to be tracks. ' +
+          'To add podcast episodes, pass full URIs: spotify:episode:{id}.',
+      ),
     position: z
       .number()
       .nonnegative()
       .optional()
-      .describe('Position to insert the tracks (0-based index)'),
+      .describe('Position to insert the items (0-based index)'),
   },
   handler: async (args, _extra: SpotifyHandlerExtra) => {
     const { playlistId, trackIds, position } = args;
 
     if (trackIds.length === 0) {
       return {
-        content: [
-          {
-            type: 'text',
-            text: 'Error: No track IDs provided',
-          },
-        ],
+        content: [{ type: 'text', text: 'Error: No IDs provided' }],
       };
     }
 
     try {
-      const trackUris = trackIds.map((id) => `spotify:track:${id}`);
+      const uris = trackIds.map((id) =>
+        id.startsWith('spotify:') ? id : `spotify:track:${id}`,
+      );
 
       // Hit /items directly: see spotifyFetch JSDoc for context.
       await spotifyFetch(`playlists/${playlistId}/items`, {
         method: 'POST',
         body: {
-          uris: trackUris,
+          uris,
           ...(position !== undefined ? { position } : {}),
         },
       });
@@ -249,7 +254,7 @@ const addTracksToPlaylist: tool<{
         content: [
           {
             type: 'text',
-            text: `Successfully added ${trackIds.length} track${
+            text: `Successfully added ${trackIds.length} item${
               trackIds.length === 1 ? '' : 's'
             } to playlist (ID: ${playlistId})`,
           },
@@ -260,7 +265,7 @@ const addTracksToPlaylist: tool<{
         content: [
           {
             type: 'text',
-            text: `Error adding tracks to playlist: ${
+            text: `Error adding items to playlist: ${
               error instanceof Error ? error.message : String(error)
             }`,
           },
