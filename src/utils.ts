@@ -124,7 +124,8 @@ export async function createSpotifyApi(): Promise<SpotifyApi> {
 
   if (config.accessToken && config.refreshToken) {
     const now = Date.now();
-    const shouldRefresh = !config.expiresAt || config.expiresAt <= now;
+    const shouldRefresh =
+      !config.expiresAt || config.expiresAt <= now + 5 * 60 * 1000;
 
     if (shouldRefresh) {
       console.log(
@@ -300,6 +301,7 @@ export async function authorizeSpotify(): Promise<void> {
     'user-modify-playback-state',
     'user-read-playback-state',
     'user-read-currently-playing',
+    'user-read-playback-position',
   ];
 
   const authParams = new URLSearchParams({
