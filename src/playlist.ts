@@ -293,10 +293,12 @@ const unfollowPlaylist: tool<{
 }> = {
   name: 'unfollowPlaylist',
   description:
-    'Remove a playlist from the current user\'s library (unfollow). ' +
+    "Remove a playlist from the current user's library (unfollow). " +
     'Note: Spotify does not allow permanent deletion of playlists via the API.',
   schema: {
-    playlistId: z.string().describe('The Spotify ID of the playlist to unfollow'),
+    playlistId: z
+      .string()
+      .describe('The Spotify ID of the playlist to unfollow'),
   },
   handler: async (args, _extra: SpotifyHandlerExtra) => {
     const { playlistId } = args;
