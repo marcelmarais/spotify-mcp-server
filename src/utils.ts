@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
+import readline from 'node:readline';
 import { URL, fileURLToPath } from 'node:url';
 import { SpotifyApi } from '@spotify/web-api-ts-sdk';
 import open from 'open';
@@ -398,11 +399,59 @@ export async function authorizeSpotify(): Promise<void> {
       );
       console.log('Opening browser for authorization...');
 
-      open(authorizationUrl).catch((_error: Error) => {
-        console.log(
-          'Failed to open browser automatically. Please visit this URL to authorize:',
-        );
+      open(authorizationUrl).catch(async (_error: Error) => {
+        console.log('Failed to open browser automatically.');
+        console.log('Please visit this URL to authorize:');
         console.log(authorizationUrl);
+        console.log('');
+        console.log('After authorization, you will be redirected to:');
+        console.log(config.redirectUri);
+        console.log('Please paste the full redirect URL here:');
+
+        const rl = readline.createInterface({
+          input: process.stdin,
+          output: process.stdout,
+        });
+
+        const redirectUrl = await new Promise<string>((resolve) => {
+          rl.question('Redirect URL: ', (url) => {
+            rl.close();
+            resolve(url);
+          });
+        });
+
+        try {
+          const reqUrl = new URL(redirectUrl);
+          const code = reqUrl.searchParams.get('code');
+          const returnedState = reqUrl.searchParams.get('state');
+          const error = reqUrl.searchParams.get('error');
+
+          if (error) {
+            throw new Error(`Authorization error: ${error}`);
+          }
+
+          if (returnedState !== state) {
+            throw new Error('State mismatch');
+          }
+
+          if (!code) {
+            throw new Error('No authorization code received');
+          }
+
+          const tokens = await exchangeCodeForToken(code, config);
+          config.accessToken = tokens.access_token;
+          config.refreshToken = tokens.refresh_token;
+          config.expiresAt = Date.now() + tokens.expires_in * 1000;
+          saveSpotifyConfig(config);
+          console.log(
+            'Authentication successful! Access token has been saved.',
+          );
+          server.close();
+          resolve();
+        } catch (error) {
+          server.close();
+          reject(error);
+        }
       });
     });
 
