@@ -2,10 +2,10 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
+import readline from 'node:readline';
 import { URL, fileURLToPath } from 'node:url';
 import { SpotifyApi } from '@spotify/web-api-ts-sdk';
 import open from 'open';
-import readline from 'node:readline';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CONFIG_FILE = path.join(__dirname, '../spotify-config.json');
@@ -443,7 +443,9 @@ export async function authorizeSpotify(): Promise<void> {
           config.refreshToken = tokens.refresh_token;
           config.expiresAt = Date.now() + tokens.expires_in * 1000;
           saveSpotifyConfig(config);
-          console.log('Authentication successful! Access token has been saved.');
+          console.log(
+            'Authentication successful! Access token has been saved.',
+          );
           server.close();
           resolve();
         } catch (error) {
