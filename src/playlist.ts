@@ -288,9 +288,51 @@ const reorderPlaylistItems: tool<{
   },
 };
 
+const unfollowPlaylist: tool<{
+  playlistId: z.ZodString;
+}> = {
+  name: 'unfollowPlaylist',
+  description:
+    'Remove a playlist from the current user\'s library (unfollow). ' +
+    'Note: Spotify does not allow permanent deletion of playlists via the API.',
+  schema: {
+    playlistId: z.string().describe('The Spotify ID of the playlist to unfollow'),
+  },
+  handler: async (args, _extra: SpotifyHandlerExtra) => {
+    const { playlistId } = args;
+
+    try {
+      await spotifyFetch(`playlists/${playlistId}/followers`, {
+        method: 'DELETE',
+      });
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Successfully unfollowed playlist (ID: ${playlistId})`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error unfollowing playlist: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          },
+        ],
+      };
+    }
+  },
+};
+
 export const playlistTools = [
   getPlaylist,
   updatePlaylist,
   removeTracksFromPlaylist,
   reorderPlaylistItems,
+  unfollowPlaylist,
 ];
