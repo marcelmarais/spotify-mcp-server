@@ -60,6 +60,7 @@ export interface SpotifyEpisodeShow {
 export interface SpotifyEpisode {
   id: string;
   name: string;
+  type: 'episode';
   description: string;
   duration_ms: number;
   release_date: string;

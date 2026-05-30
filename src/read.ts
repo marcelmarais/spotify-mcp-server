@@ -348,15 +348,16 @@ const getPlaylistTracks: tool<{
 
     // Hit /items directly: see spotifyFetch JSDoc for context.
     // Response wraps each entry's track under `item` (new) or `track` (legacy).
+    // additional_types=episode is required for Spotify to return episode objects.
     type PlaylistItemEntry = {
-      item?: SpotifyTrack | null;
-      track?: SpotifyTrack | null;
+      item?: SpotifyTrack | SpotifyEpisode | null;
+      track?: SpotifyTrack | SpotifyEpisode | null;
     };
     const playlistTracks = await spotifyFetch<{
       items: PlaylistItemEntry[];
       total: number;
     }>(`playlists/${playlistId}/items`, {
-      query: { limit, offset },
+      query: { limit, offset, additional_types: 'track,episode' },
     });
 
     if ((playlistTracks.items?.length ?? 0) === 0) {
@@ -379,6 +380,10 @@ const getPlaylistTracks: tool<{
           const artists = track.artists.map((a) => a.name).join(', ');
           const duration = formatDuration(track.duration_ms);
           return `${offset + i + 1}. "${track.name}" by ${artists} (${duration}) - ID: ${track.id}`;
+        }
+
+        if (track.type === 'episode') {
+          return formatEpisode(track as SpotifyEpisode, offset + i);
         }
 
         return `${offset + i + 1}. Unknown item`;
