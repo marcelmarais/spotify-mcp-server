@@ -173,7 +173,9 @@ const removeTracksFromPlaylist: tool<{
     const { playlistId, trackIds, snapshotId } = args;
 
     try {
-      const items = trackIds.map((id) => ({ uri: `spotify:track:${id}` }));
+      const items = trackIds.map((id) => ({
+        uri: id.startsWith('spotify:') ? id : `spotify:track:${id}`,
+      }));
 
       // Hit /items directly: SDK targets the deprecated /tracks endpoint
       // (see spotifyFetch JSDoc for context on the March 2026 migration).
