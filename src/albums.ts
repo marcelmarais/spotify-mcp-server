@@ -23,7 +23,9 @@ const getAlbums: tool<{
   handler: async (args, _extra: SpotifyHandlerExtra) => {
     const raw = args.albumIds ?? args.ids;
     if (!raw) {
-      return { content: [{ type: 'text', text: 'Error: albumIds is required' }] };
+      return {
+        content: [{ type: 'text', text: 'Error: albumIds is required' }],
+      };
     }
     const albumIds = raw;
     const ids = Array.isArray(albumIds) ? albumIds : [albumIds];
@@ -133,7 +135,9 @@ const getAlbumTracks: tool<{
     const albumId = args.albumId ?? args.album_id;
     const { limit = 20, offset = 0 } = args;
     if (!albumId) {
-      return { content: [{ type: 'text', text: 'Error: albumId is required' }] };
+      return {
+        content: [{ type: 'text', text: 'Error: albumId is required' }],
+      };
     }
 
     try {

@@ -9,11 +9,15 @@ import { handleSpotifyRequest, spotifyFetch } from './utils.js';
  * Returns the device_id to use, or empty string if none found.
  */
 async function ensureActiveDevice(preferredDeviceId?: string): Promise<string> {
-  const data = await spotifyFetch<{ devices: Array<{ id: string; is_active: boolean; name: string }> }>('me/player/devices');
+  const data = await spotifyFetch<{
+    devices: Array<{ id: string; is_active: boolean; name: string }>;
+  }>('me/player/devices');
   const devices = data?.devices ?? [];
 
   if (devices.length === 0) {
-    throw new Error('No Spotify devices found. Open Spotify on any device first.');
+    throw new Error(
+      'No Spotify devices found. Open Spotify on any device first.',
+    );
   }
 
   // If a preferred device was specified and exists, use it
@@ -21,7 +25,10 @@ async function ensureActiveDevice(preferredDeviceId?: string): Promise<string> {
     const preferred = devices.find((d) => d.id === preferredDeviceId);
     if (preferred) {
       if (!preferred.is_active) {
-        await spotifyFetch('me/player', { method: 'PUT', body: { device_ids: [preferredDeviceId], play: false } });
+        await spotifyFetch('me/player', {
+          method: 'PUT',
+          body: { device_ids: [preferredDeviceId], play: false },
+        });
         await new Promise((r) => setTimeout(r, 500));
       }
       return preferredDeviceId;
@@ -34,7 +41,10 @@ async function ensureActiveDevice(preferredDeviceId?: string): Promise<string> {
 
   // No active device — transfer to the first available one
   const target = devices[0];
-  await spotifyFetch('me/player', { method: 'PUT', body: { device_ids: [target.id], play: false } });
+  await spotifyFetch('me/player', {
+    method: 'PUT',
+    body: { device_ids: [target.id], play: false },
+  });
   // Give Spotify a moment to register the transfer before we start playback
   await new Promise((r) => setTimeout(r, 600));
   return target.id;
@@ -56,13 +66,33 @@ const playMusic: tool<{
     'For albums/playlists you can also use "context_uri". ' +
     'Device is selected automatically — "deviceId" or "device_id" are optional.',
   schema: {
-    uri: z.string().optional().describe('Spotify URI to play (e.g. spotify:track:xxx, spotify:album:xxx)'),
-    context_uri: z.string().optional().describe('Alias for uri — Spotify context URI for albums/playlists'),
-    type: z.enum(['track', 'album', 'artist', 'playlist']).optional().describe('Type of item (only needed with id)'),
-    id: z.string().optional().describe('Spotify ID of the item (use with type)'),
-    deviceId: z.string().optional().describe('Spotify device ID to play on (auto-selected if omitted)'),
+    uri: z
+      .string()
+      .optional()
+      .describe(
+        'Spotify URI to play (e.g. spotify:track:xxx, spotify:album:xxx)',
+      ),
+    context_uri: z
+      .string()
+      .optional()
+      .describe('Alias for uri — Spotify context URI for albums/playlists'),
+    type: z
+      .enum(['track', 'album', 'artist', 'playlist'])
+      .optional()
+      .describe('Type of item (only needed with id)'),
+    id: z
+      .string()
+      .optional()
+      .describe('Spotify ID of the item (use with type)'),
+    deviceId: z
+      .string()
+      .optional()
+      .describe('Spotify device ID to play on (auto-selected if omitted)'),
     device_id: z.string().optional().describe('Alias for deviceId'),
-    offset: z.number().optional().describe('Track offset within album/playlist (0-based)'),
+    offset: z
+      .number()
+      .optional()
+      .describe('Track offset within album/playlist (0-based)'),
   },
   handler: async (args, _extra: SpotifyHandlerExtra) => {
     // Normalize aliases
@@ -72,7 +102,13 @@ const playMusic: tool<{
 
     if (!(resolvedUri || (type && id))) {
       return {
-        content: [{ type: 'text', text: 'Error: Must provide a "uri" (e.g. spotify:track:xxx) or both "type" and "id"', isError: true }],
+        content: [
+          {
+            type: 'text',
+            text: 'Error: Must provide a "uri" (e.g. spotify:track:xxx) or both "type" and "id"',
+            isError: true,
+          },
+        ],
       };
     }
 
@@ -93,7 +129,13 @@ const playMusic: tool<{
           return;
         }
         if (resolvedType === 'track') {
-          await spotifyApi.player.startResumePlayback(activeDeviceId, undefined, [spotifyUri], undefined, offset);
+          await spotifyApi.player.startResumePlayback(
+            activeDeviceId,
+            undefined,
+            [spotifyUri],
+            undefined,
+            offset,
+          );
         } else {
           // album, playlist, artist — use context_uri + optional offset
           await spotifyApi.player.startResumePlayback(
@@ -111,7 +153,9 @@ const playMusic: tool<{
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       return {
-        content: [{ type: 'text', text: `Error playing music: ${msg}`, isError: true }],
+        content: [
+          { type: 'text', text: `Error playing music: ${msg}`, isError: true },
+        ],
       };
     }
   },
@@ -341,7 +385,15 @@ const resumePlayback: tool<{
       return { content: [{ type: 'text', text: 'Playback resumed' }] };
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
-      return { content: [{ type: 'text', text: `Error resuming playback: ${msg}`, isError: true }] };
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error resuming playback: ${msg}`,
+            isError: true,
+          },
+        ],
+      };
     }
   },
 };
