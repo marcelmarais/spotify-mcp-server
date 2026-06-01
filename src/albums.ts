@@ -4,7 +4,8 @@ import type { SpotifyHandlerExtra, tool } from './types.js';
 import { formatDuration, handleSpotifyRequest } from './utils.js';
 
 const getAlbums: tool<{
-  albumIds: z.ZodUnion<[z.ZodString, z.ZodArray<z.ZodString>]>;
+  albumIds: z.ZodOptional<z.ZodUnion<[z.ZodString, z.ZodArray<z.ZodString>]>>;
+  ids: z.ZodOptional<z.ZodUnion<[z.ZodString, z.ZodArray<z.ZodString>]>>;
 }> = {
   name: 'getAlbums',
   description:
@@ -12,10 +13,19 @@ const getAlbums: tool<{
   schema: {
     albumIds: z
       .union([z.string(), z.array(z.string()).max(20)])
+      .optional()
       .describe('A single album ID or array of album IDs (max 20)'),
+    ids: z
+      .union([z.string(), z.array(z.string()).max(20)])
+      .optional()
+      .describe('Alias for albumIds'),
   },
   handler: async (args, _extra: SpotifyHandlerExtra) => {
-    const { albumIds } = args;
+    const raw = args.albumIds ?? args.ids;
+    if (!raw) {
+      return { content: [{ type: 'text', text: 'Error: albumIds is required' }] };
+    }
+    const albumIds = raw;
     const ids = Array.isArray(albumIds) ? albumIds : [albumIds];
 
     if (ids.length === 0) {
@@ -98,6 +108,7 @@ const getAlbums: tool<{
 
 const getAlbumTracks: tool<{
   albumId: z.ZodString;
+  album_id: z.ZodOptional<z.ZodString>;
   limit: z.ZodOptional<z.ZodNumber>;
   offset: z.ZodOptional<z.ZodNumber>;
 }> = {
@@ -105,6 +116,7 @@ const getAlbumTracks: tool<{
   description: 'Get tracks from a specific album with pagination support',
   schema: {
     albumId: z.string().describe('The Spotify ID of the album'),
+    album_id: z.string().optional().describe('Alias for albumId'),
     limit: z
       .number()
       .min(1)
@@ -118,7 +130,11 @@ const getAlbumTracks: tool<{
       .describe('Offset for pagination (0-based index)'),
   },
   handler: async (args, _extra: SpotifyHandlerExtra) => {
-    const { albumId, limit = 20, offset = 0 } = args;
+    const albumId = args.albumId ?? args.album_id;
+    const { limit = 20, offset = 0 } = args;
+    if (!albumId) {
+      return { content: [{ type: 'text', text: 'Error: albumId is required' }] };
+    }
 
     try {
       const tracks = await handleSpotifyRequest(async (spotifyApi) => {
