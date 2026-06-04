@@ -136,7 +136,11 @@ const searchSpotify: tool<{
             .map((track, i) => {
               const artists = track.artists.map((a) => a.name).join(', ');
               const duration = formatDuration(track.duration_ms);
-              return `${i + 1}. "${track.name}" by ${artists} (${duration}) - ID: ${track.id}`;
+              const popularity =
+                typeof track.popularity === 'number'
+                  ? `, popularity: ${track.popularity}`
+                  : '';
+              return `${i + 1}. "${track.name}" by ${artists} (${duration}${popularity}) - ID: ${track.id}`;
             })
             .join('\n');
         } else if (type === 'album' && results.albums) {
