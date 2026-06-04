@@ -398,6 +398,10 @@ export async function authorizeSpotify(): Promise<void> {
         `Listening for Spotify authentication callback on port ${port}`,
       );
       console.log('Opening browser for authorization...');
+      console.log('');
+      console.log('If no browser opens, visit this URL manually:');
+      console.log(authorizationUrl);
+      console.log('');
 
       open(authorizationUrl).catch(async (_error: Error) => {
         console.log('Failed to open browser automatically.');
