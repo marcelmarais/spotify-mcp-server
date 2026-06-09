@@ -303,6 +303,7 @@ export async function authorizeSpotify(): Promise<void> {
     'user-read-playback-state',
     'user-read-currently-playing',
     'user-read-playback-position',
+    'user-top-read',
   ];
 
   const authParams = new URLSearchParams({

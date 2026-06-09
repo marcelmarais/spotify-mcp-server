@@ -751,6 +751,137 @@ const removeUsersSavedTracks: tool<{
   },
 };
 
+const TIME_RANGES = ['short_term', 'medium_term', 'long_term'] as const;
+type TimeRange = (typeof TIME_RANGES)[number];
+
+const TIME_RANGE_LABEL: Record<TimeRange, string> = {
+  short_term: 'last ~4 weeks',
+  medium_term: 'last ~6 months',
+  long_term: 'last ~1 year',
+};
+
+const getTopTracks: tool<{
+  timeRange: z.ZodOptional<z.ZodEnum<[TimeRange, ...TimeRange[]]>>;
+  limit: z.ZodOptional<z.ZodNumber>;
+}> = {
+  name: 'getTopTracks',
+  description:
+    "Get the current user's top (most-played) tracks over a given time range. " +
+    'This is the closest thing Spotify exposes to listening statistics.',
+  schema: {
+    timeRange: z
+      .enum(TIME_RANGES)
+      .optional()
+      .describe(
+        'Time range: short_term (~4 weeks), medium_term (~6 months), or long_term (~1 year). Default: medium_term.',
+      ),
+    limit: z
+      .number()
+      .min(1)
+      .max(50)
+      .optional()
+      .describe('Maximum number of tracks to return (1-50)'),
+  },
+  handler: async (args, _extra: SpotifyHandlerExtra) => {
+    const { timeRange = 'medium_term', limit = 20 } = args;
+
+    const top = await handleSpotifyRequest(async (spotifyApi) => {
+      return await spotifyApi.currentUser.topItems(
+        'tracks',
+        timeRange,
+        limit as MaxInt<50>,
+      );
+    });
+
+    if (top.items.length === 0) {
+      return {
+        content: [
+          { type: 'text', text: 'No top tracks found for this time range.' },
+        ],
+      };
+    }
+
+    const formatted = top.items
+      .map((track, i) => {
+        const artists = track.artists.map((a) => a.name).join(', ');
+        const duration = formatDuration(track.duration_ms);
+        return `${i + 1}. "${track.name}" by ${artists} (${duration}) - Popularity: ${track.popularity} - ID: ${track.id}`;
+      })
+      .join('\n');
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `# Top Tracks (${TIME_RANGE_LABEL[timeRange]})\n\n${formatted}`,
+        },
+      ],
+    };
+  },
+};
+
+const getTopArtists: tool<{
+  timeRange: z.ZodOptional<z.ZodEnum<[TimeRange, ...TimeRange[]]>>;
+  limit: z.ZodOptional<z.ZodNumber>;
+}> = {
+  name: 'getTopArtists',
+  description:
+    "Get the current user's top (most-played) artists over a given time range. " +
+    'This is the closest thing Spotify exposes to listening statistics.',
+  schema: {
+    timeRange: z
+      .enum(TIME_RANGES)
+      .optional()
+      .describe(
+        'Time range: short_term (~4 weeks), medium_term (~6 months), or long_term (~1 year). Default: medium_term.',
+      ),
+    limit: z
+      .number()
+      .min(1)
+      .max(50)
+      .optional()
+      .describe('Maximum number of artists to return (1-50)'),
+  },
+  handler: async (args, _extra: SpotifyHandlerExtra) => {
+    const { timeRange = 'medium_term', limit = 20 } = args;
+
+    const top = await handleSpotifyRequest(async (spotifyApi) => {
+      return await spotifyApi.currentUser.topItems(
+        'artists',
+        timeRange,
+        limit as MaxInt<50>,
+      );
+    });
+
+    if (top.items.length === 0) {
+      return {
+        content: [
+          { type: 'text', text: 'No top artists found for this time range.' },
+        ],
+      };
+    }
+
+    const formatted = top.items
+      .map((artist, i) => {
+        const genres =
+          artist.genres.length > 0
+            ? ` - Genres: ${artist.genres.slice(0, 3).join(', ')}`
+            : '';
+        return `${i + 1}. ${artist.name} - Popularity: ${artist.popularity}${genres} - ID: ${artist.id}`;
+      })
+      .join('\n');
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `# Top Artists (${TIME_RANGE_LABEL[timeRange]})\n\n${formatted}`,
+        },
+      ],
+    };
+  },
+};
+
 export const readTools = [
   searchSpotify,
   getNowPlaying,
@@ -761,4 +892,6 @@ export const readTools = [
   removeUsersSavedTracks,
   getQueue,
   getAvailableDevices,
+  getTopTracks,
+  getTopArtists,
 ];
