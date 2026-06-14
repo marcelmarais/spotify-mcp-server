@@ -182,24 +182,39 @@ const createPlaylist: tool<{
   handler: async (args, _extra: SpotifyHandlerExtra) => {
     const { name, description, public: isPublic = false } = args;
 
-    const result = await handleSpotifyRequest(async (spotifyApi) => {
-      const me = await spotifyApi.currentUser.profile();
-
-      return await spotifyApi.playlists.createPlaylist(me.id, {
-        name,
-        description,
-        public: isPublic,
+    try {
+      // Hit /me/playlists directly: the /users/{id}/playlists path the SDK's
+      // createPlaylist() uses was retired in the March 2026 API migration for
+      // Development Mode apps (see spotifyFetch JSDoc). POST /me/playlists
+      // infers the owner from the token, so no profile lookup is needed.
+      const result = await spotifyFetch<{
+        id: string;
+        external_urls: { spotify: string };
+      }>('me/playlists', {
+        method: 'POST',
+        body: { name, description, public: isPublic },
       });
-    });
 
-    return {
-      content: [
-        {
-          type: 'text',
-          text: `Successfully created playlist "${name}"\nPlaylist ID: ${result.id}\nPlaylist URL: ${result.external_urls.spotify}`,
-        },
-      ],
-    };
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Successfully created playlist "${name}"\nPlaylist ID: ${result.id}\nPlaylist URL: ${result.external_urls.spotify}`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error creating playlist: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          },
+        ],
+      };
+    }
   },
 };
 
