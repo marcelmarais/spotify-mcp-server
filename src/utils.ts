@@ -254,10 +254,37 @@ async function refreshAccessToken(
 
   if (!response.ok) {
     const errorData = await response.text();
+    let errorCode: string | undefined;
+    try {
+      errorCode = JSON.parse(errorData).error;
+    } catch {
+      // Non-JSON error body; treat as a generic, retryable failure.
+    }
+
+    // An expired (after 6 months) or revoked refresh token returns
+    // invalid_grant. Discard the stored tokens so we never retry them; the
+    // user has to sign in again to get a new refresh token.
+    if (errorCode === 'invalid_grant') {
+      config.accessToken = undefined;
+      config.refreshToken = undefined;
+      config.expiresAt = undefined;
+      saveSpotifyConfig(config);
+      throw new Error(
+        'Spotify refresh token is no longer valid (invalid_grant) and has been discarded. Please run "npm run auth" to re-authenticate.',
+      );
+    }
+
     throw new Error(`Failed to refresh access token: ${errorData}`);
   }
 
   const data = await response.json();
+
+  // Spotify may rotate the refresh token on refresh; persist the new one so
+  // the caller's saveSpotifyConfig() writes it back.
+  if (data.refresh_token) {
+    config.refreshToken = data.refresh_token;
+  }
+
   return {
     access_token: data.access_token,
     expires_in: data.expires_in || 3600,
