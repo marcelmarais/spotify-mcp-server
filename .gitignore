@@ -3,6 +3,9 @@ node_modules
 .env
 package-lock.json
 spotify-config.json
+spotify-token-cache.json
+.spotify-token-cache.json.*.tmp
+spotify-auth.lock
 build
 dist
 .DS_Store

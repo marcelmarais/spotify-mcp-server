@@ -2,22 +2,12 @@ import type { MaxInt } from '@spotify/web-api-ts-sdk';
 import { z } from 'zod';
 import type {
   SpotifyEpisode,
-  SpotifyEpisodesResponse,
   SpotifyHandlerExtra,
-  SpotifySearchEpisodesResponse,
-  SpotifySearchShowsResponse,
   SpotifyShow,
-  SpotifySimplifiedEpisode,
   SpotifyTrack,
   tool,
 } from './types.js';
-import {
-  createSpotifyApi,
-  formatDuration,
-  handleSpotifyRequest,
-  loadSpotifyConfig,
-  spotifyFetch,
-} from './utils.js';
+import { formatDuration, handleSpotifyRequest, spotifyFetch } from './utils.js';
 
 function isTrack(item: any): item is SpotifyTrack {
   return (
@@ -47,13 +37,15 @@ function formatEpisode(ep: SpotifyEpisode, i: number): string {
 }
 
 function formatShow(show: SpotifyShow, i: number): string {
-  return `${i + 1}. "${show.name}" by ${show.publisher} (${show.total_episodes} episodes) - ID: ${show.id}`;
+  const publisher = show.publisher ?? 'Unknown publisher';
+  return `${i + 1}. "${show.name}" by ${publisher} (${show.total_episodes} episodes) - ID: ${show.id}`;
 }
 
 const searchSpotify: tool<{
   query: z.ZodString;
   type: z.ZodEnum<[SearchType, ...SearchType[]]>;
   limit: z.ZodOptional<z.ZodNumber>;
+  offset: z.ZodOptional<z.ZodNumber>;
 }> = {
   name: 'searchSpotify',
   description:
@@ -75,13 +67,20 @@ const searchSpotify: tool<{
     limit: z
       .number()
       .min(1)
-      .max(50)
+      .max(10)
       .optional()
-      .describe('Maximum number of results to return (default: 10, max: 50)'),
+      .describe('Maximum number of results to return (default: 5, max: 10)'),
+    offset: z
+      .number()
+      .min(0)
+      .max(1000)
+      .optional()
+      .describe('Index of the first result to return (default: 0)'),
   },
   handler: async (args, _extra: SpotifyHandlerExtra) => {
-    const { query, type, limit } = args;
-    const limitValue = limit ?? 10;
+    const { query, type, limit, offset } = args;
+    const limitValue = limit ?? 5;
+    const offsetValue = offset ?? 0;
 
     try {
       let formattedResults = '';
@@ -89,35 +88,51 @@ const searchSpotify: tool<{
       if (type === 'episode') {
         // Search returns SimplifiedEpisodeObject (no `show` field).
         // Batch-fetch full episode objects to include show info.
-        const searchResults = await spotifyFetch<SpotifySearchEpisodesResponse>(
-          'search',
-          {
-            query: { q: query, type, limit: limitValue, market: 'from_token' },
-          },
-        );
-        const ids = searchResults.episodes.items
-          .filter((ep): ep is SpotifySimplifiedEpisode => ep !== null)
-          .map((ep) => ep.id)
-          .join(',');
-        if (!ids) {
+        const searchResults = await handleSpotifyRequest(async (spotifyApi) => {
+          return await spotifyApi.search(
+            query,
+            ['episode'],
+            undefined,
+            limitValue as MaxInt<50>,
+            offsetValue,
+          );
+        });
+        const ids = (searchResults.episodes?.items ?? [])
+          .filter((ep): ep is NonNullable<typeof ep> => ep !== null)
+          .map((ep) => ep.id);
+        if (ids.length === 0) {
           formattedResults = '';
         } else {
-          const full = await spotifyFetch<SpotifyEpisodesResponse>('episodes', {
-            query: { ids, market: 'from_token' },
+          const full = await handleSpotifyRequest(async (spotifyApi) => {
+            if (ids.length === 1) {
+              return [await spotifyApi.episodes.get(ids[0], undefined as any)];
+            }
+
+            const settled = await Promise.allSettled(
+              ids.map((id) => spotifyApi.episodes.get(id, undefined as any)),
+            );
+            return settled.map((result) =>
+              result.status === 'fulfilled' ? result.value : null,
+            );
           });
-          formattedResults = full.episodes
+          formattedResults = (full as unknown as Array<SpotifyEpisode | null>)
             .filter((ep): ep is SpotifyEpisode => ep !== null)
             .map(formatEpisode)
             .join('\n');
         }
       } else if (type === 'show') {
-        const results = await spotifyFetch<SpotifySearchShowsResponse>(
-          'search',
-          {
-            query: { q: query, type, limit: limitValue, market: 'from_token' },
-          },
-        );
-        formattedResults = results.shows.items
+        const results = await handleSpotifyRequest(async (spotifyApi) => {
+          return await spotifyApi.search(
+            query,
+            ['show'],
+            undefined,
+            limitValue as MaxInt<50>,
+            offsetValue,
+          );
+        });
+        formattedResults = (results.shows?.items ?? [])
+          .filter((show): show is NonNullable<typeof show> => show !== null)
+          .map((show) => show as unknown as SpotifyShow)
           .filter((show): show is SpotifyShow => show !== null)
           .map(formatShow)
           .join('\n');
@@ -128,6 +143,7 @@ const searchSpotify: tool<{
             [type],
             undefined,
             limitValue as MaxInt<50>,
+            offsetValue,
           );
         });
 
@@ -136,11 +152,7 @@ const searchSpotify: tool<{
             .map((track, i) => {
               const artists = track.artists.map((a) => a.name).join(', ');
               const duration = formatDuration(track.duration_ms);
-              const popularity =
-                typeof track.popularity === 'number'
-                  ? `, popularity: ${track.popularity}`
-                  : '';
-              return `${i + 1}. "${track.name}" by ${artists} (${duration}${popularity}) - ID: ${track.id}`;
+              return `${i + 1}. "${track.name}" by ${artists} (${duration}) - ID: ${track.id}`;
             })
             .join('\n');
         } else if (type === 'album' && results.albums) {
@@ -708,25 +720,14 @@ const removeUsersSavedTracks: tool<{
     }
 
     try {
-      // Ensure token is fresh (handles auto-refresh if needed)
-      await createSpotifyApi();
-      const config = loadSpotifyConfig();
+      const uris = trackIds
+        .map((id) => (id.startsWith('spotify:') ? id : `spotify:track:${id}`))
+        .join(',');
 
-      const uris = trackIds.map((id) => `spotify:track:${id}`).join(',');
-      const response = await fetch(
-        `https://api.spotify.com/v1/me/library?uris=${encodeURIComponent(uris)}`,
-        {
-          method: 'DELETE',
-          headers: {
-            Authorization: `Bearer ${config.accessToken}`,
-          },
-        },
-      );
-
-      if (!response.ok) {
-        const errorData = await response.text();
-        throw new Error(`Spotify API error ${response.status}: ${errorData}`);
-      }
+      await spotifyFetch('me/library', {
+        method: 'DELETE',
+        query: { uris },
+      });
 
       return {
         content: [
@@ -805,7 +806,7 @@ const getTopTracks: tool<{
       .map((track, i) => {
         const artists = track.artists.map((a) => a.name).join(', ');
         const duration = formatDuration(track.duration_ms);
-        return `${i + 1}. "${track.name}" by ${artists} (${duration}) - Popularity: ${track.popularity} - ID: ${track.id}`;
+        return `${i + 1}. "${track.name}" by ${artists} (${duration}) - ID: ${track.id}`;
       })
       .join('\n');
 
@@ -867,7 +868,7 @@ const getTopArtists: tool<{
           artist.genres.length > 0
             ? ` - Genres: ${artist.genres.slice(0, 3).join(', ')}`
             : '';
-        return `${i + 1}. ${artist.name} - Popularity: ${artist.popularity}${genres} - ID: ${artist.id}`;
+        return `${i + 1}. ${artist.name}${genres} - ID: ${artist.id}`;
       })
       .join('\n');
 

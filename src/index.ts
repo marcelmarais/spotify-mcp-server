@@ -4,7 +4,7 @@ import { albumTools } from './albums.js';
 import { playTools } from './play.js';
 import { playlistTools } from './playlist.js';
 import { readTools } from './read.js';
-import { createSpotifyApi } from './utils.js';
+import { initializeSpotifyApi, loadSpotifyConfig } from './utils.js';
 
 const server = new McpServer({
   name: 'spotify-controller',
@@ -17,20 +17,9 @@ const server = new McpServer({
   },
 );
 
-// Proactively refresh the Spotify token every 45 minutes so it never
-// expires mid-session (tokens last 60 minutes; this keeps a safe buffer).
-setInterval(
-  async () => {
-    try {
-      await createSpotifyApi();
-    } catch {
-      // Errors will surface on the next tool call; nothing actionable here.
-    }
-  },
-  45 * 60 * 1000,
-);
-
 async function main() {
+  initializeSpotifyApi(loadSpotifyConfig());
+
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }

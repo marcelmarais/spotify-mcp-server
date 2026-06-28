@@ -333,45 +333,27 @@ Then edit the file with your credentials:
 ```json
 {
   "clientId": "your-client-id",
-  "clientSecret": "your-client-secret",
   "redirectUri": "http://127.0.0.1:8888/callback"
 }
 ```
 
 ### Authentication Process
 
-The Spotify API uses OAuth 2.0 for authentication. Follow these steps to authenticate your application:
+The Spotify API uses OAuth 2.0 with PKCE for authentication.
 
-1. Run the authentication script:
+1. Start the MCP server from your client.
 
-```bash
-npm run auth
-```
-
-2. The script will generate an authorization URL. Open this URL in your web browser.
+2. On the first Spotify tool call, the server opens your browser to authorize the app.
 
 3. You'll be prompted to log in to Spotify and authorize your application.
 
-4. After authorization, Spotify will redirect you to your specified redirect URI with a code parameter in the URL.
+4. After authorization, Spotify redirects to your configured localhost redirect URI.
 
-5. The authentication script will automatically exchange this code for access and refresh tokens.
+5. The server exchanges the authorization code through the Spotify SDK and caches tokens in memory and in `spotify-token-cache.json` in the project root.
 
-6. These tokens will be saved to your `spotify-config.json` file, which will now look something like:
+Tokens are not written to `spotify-config.json`. Restarting the MCP server reuses `spotify-token-cache.json` before starting a new browser authorization flow.
 
-```json
-{
-  "clientId": "your-client-id",
-  "clientSecret": "your-client-secret",
-  "redirectUri": "http://localhost:8888/callback",
-  "accessToken": "BQAi9Pn...kKQ",
-  "refreshToken": "AQDQcj...7w",
-  "expiresAt": 1677889354671
-}
-```
-
-**Note**: The `expiresAt` field is a Unix timestamp (in milliseconds) indicating when the access token expires.
-
-7. **Automatic Token Refresh**: The server will automatically refresh the access token when it expires (typically after 1 hour). The refresh happens transparently using the `refreshToken`, so you don't need to re-authenticate manually. If the refresh fails, you'll need to run `npm run auth` again to re-authenticate.
+Interactive browser authorization is protected by `spotify-auth.lock` so only one server process can listen on the configured redirect URI port at a time. Other processes poll the lock every 250ms and then reuse the token cache after the first process completes authentication. The authorization listener and lock both time out after 2 minutes.
 
 ## Integrating with Claude Desktop, Cursor, and VsCode [Via Cline model extension](https://marketplace.visualstudio.com/items/?itemName=saoudrizwan.claude-dev)
 

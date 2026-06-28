@@ -1,7 +1,13 @@
 import type { MaxInt } from '@spotify/web-api-ts-sdk';
 import { z } from 'zod';
 import type { SpotifyHandlerExtra, tool } from './types.js';
-import { formatDuration, handleSpotifyRequest } from './utils.js';
+import { formatDuration, handleSpotifyRequest, spotifyFetch } from './utils.js';
+
+function albumLibraryUris(albumIds: string[]): string {
+  return albumIds
+    .map((id) => (id.startsWith('spotify:') ? id : `spotify:album:${id}`))
+    .join(',');
+}
 
 const getAlbums: tool<{
   albumIds: z.ZodOptional<z.ZodUnion<[z.ZodString, z.ZodArray<z.ZodString>]>>;
@@ -43,9 +49,16 @@ const getAlbums: tool<{
 
     try {
       const albums = await handleSpotifyRequest(async (spotifyApi) => {
-        return ids.length === 1
-          ? [await spotifyApi.albums.get(ids[0])]
-          : await spotifyApi.albums.get(ids);
+        if (ids.length === 1) {
+          return [await spotifyApi.albums.get(ids[0])];
+        }
+
+        const settled = await Promise.allSettled(
+          ids.map(async (id) => await spotifyApi.albums.get(id)),
+        );
+        return settled.map((result) =>
+          result.status === 'fulfilled' ? result.value : null,
+        );
       });
 
       if (albums.length === 0) {
@@ -61,6 +74,16 @@ const getAlbums: tool<{
 
       if (albums.length === 1) {
         const album = albums[0];
+        if (!album) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: 'No albums found for the provided IDs',
+              },
+            ],
+          };
+        }
         const artists = album.artists.map((a) => a.name).join(', ');
         const releaseDate = album.release_date;
         const totalTracks = album.total_tracks;
@@ -224,10 +247,9 @@ const saveOrRemoveAlbumForUser: tool<{
     }
 
     try {
-      await handleSpotifyRequest(async (spotifyApi) => {
-        return action === 'save'
-          ? await spotifyApi.currentUser.albums.saveAlbums(albumIds)
-          : await spotifyApi.currentUser.albums.removeSavedAlbums(albumIds);
+      await spotifyFetch('me/library', {
+        method: action === 'save' ? 'PUT' : 'DELETE',
+        query: { uris: albumLibraryUris(albumIds) },
       });
 
       const actionPastTense = action === 'save' ? 'saved' : 'removed';
@@ -282,8 +304,8 @@ const checkUsersSavedAlbums: tool<{
     }
 
     try {
-      const savedStatus = await handleSpotifyRequest(async (spotifyApi) => {
-        return await spotifyApi.currentUser.albums.hasSavedAlbums(albumIds);
+      const savedStatus = await spotifyFetch<boolean[]>('me/library/contains', {
+        query: { uris: albumLibraryUris(albumIds) },
       });
 
       const formattedResults = albumIds

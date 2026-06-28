@@ -304,8 +304,13 @@ const unfollowPlaylist: tool<{
     const { playlistId } = args;
 
     try {
-      await spotifyFetch(`playlists/${playlistId}/followers`, {
+      await spotifyFetch('me/library', {
         method: 'DELETE',
+        query: {
+          uris: playlistId.startsWith('spotify:')
+            ? playlistId
+            : `spotify:playlist:${playlistId}`,
+        },
       });
 
       return {

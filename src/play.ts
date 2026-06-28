@@ -9,10 +9,10 @@ import { handleSpotifyRequest, spotifyFetch } from './utils.js';
  * Returns the device_id to use, or empty string if none found.
  */
 async function ensureActiveDevice(preferredDeviceId?: string): Promise<string> {
-  const data = await spotifyFetch<{
-    devices: Array<{ id: string; is_active: boolean; name: string }>;
-  }>('me/player/devices');
-  const devices = data?.devices ?? [];
+  const devices = await handleSpotifyRequest(async (spotifyApi) => {
+    const data = await spotifyApi.player.getAvailableDevices();
+    return data.devices ?? [];
+  });
 
   if (devices.length === 0) {
     throw new Error(
@@ -25,9 +25,8 @@ async function ensureActiveDevice(preferredDeviceId?: string): Promise<string> {
     const preferred = devices.find((d) => d.id === preferredDeviceId);
     if (preferred) {
       if (!preferred.is_active) {
-        await spotifyFetch('me/player', {
-          method: 'PUT',
-          body: { device_ids: [preferredDeviceId], play: false },
+        await handleSpotifyRequest(async (spotifyApi) => {
+          await spotifyApi.player.transferPlayback([preferredDeviceId], false);
         });
         await new Promise((r) => setTimeout(r, 500));
       }
@@ -36,18 +35,22 @@ async function ensureActiveDevice(preferredDeviceId?: string): Promise<string> {
   }
 
   // Use the already-active device if there is one
-  const active = devices.find((d) => d.is_active);
-  if (active) return active.id;
+  const active = devices.find((d) => d.is_active && d.id);
+  const activeId = active?.id;
+  if (activeId) return activeId;
 
   // No active device — transfer to the first available one
-  const target = devices[0];
-  await spotifyFetch('me/player', {
-    method: 'PUT',
-    body: { device_ids: [target.id], play: false },
+  const target = devices.find((d) => d.id);
+  const targetId = target?.id;
+  if (!targetId) {
+    throw new Error('No Spotify devices with IDs found.');
+  }
+  await handleSpotifyRequest(async (spotifyApi) => {
+    await spotifyApi.player.transferPlayback([targetId], false);
   });
   // Give Spotify a moment to register the transfer before we start playback
   await new Promise((r) => setTimeout(r, 600));
-  return target.id;
+  return targetId;
 }
 
 const playMusic: tool<{
@@ -277,7 +280,7 @@ const createPlaylist: tool<{
       // infers the owner from the token, so no profile lookup is needed.
       const result = await spotifyFetch<{
         id: string;
-        external_urls: { spotify: string };
+        external_urls?: { spotify?: string };
       }>('me/playlists', {
         method: 'POST',
         body: { name, description, public: isPublic },
@@ -287,7 +290,7 @@ const createPlaylist: tool<{
         content: [
           {
             type: 'text',
-            text: `Successfully created playlist "${name}"\nPlaylist ID: ${result.id}\nPlaylist URL: ${result.external_urls.spotify}`,
+            text: `Successfully created playlist "${name}"\nPlaylist ID: ${result.id}\nPlaylist URL: ${result.external_urls?.spotify ?? 'Unknown'}`,
           },
         ],
       };

@@ -71,35 +71,6 @@ export interface SpotifyShow {
   id: string;
   name: string;
   description: string;
-  publisher: string;
+  publisher?: string;
   total_episodes: number;
-}
-
-/**
- * Simplified episode object returned by the Search API.
- * Does not include the `show` field — use the Episodes API for full objects.
- */
-export interface SpotifySimplifiedEpisode {
-  id: string;
-  name: string;
-  description: string;
-  duration_ms: number;
-  release_date: string;
-}
-
-export interface SpotifySearchEpisodesResponse {
-  episodes: {
-    items: Array<SpotifySimplifiedEpisode | null>;
-  };
-}
-
-/** Full episode object returned by GET /episodes, includes show info. */
-export interface SpotifyEpisodesResponse {
-  episodes: Array<SpotifyEpisode | null>;
-}
-
-export interface SpotifySearchShowsResponse {
-  shows: {
-    items: Array<SpotifyShow | null>;
-  };
 }
