@@ -129,7 +129,7 @@ export async function createSpotifyApi(): Promise<SpotifyApi> {
       !config.expiresAt || config.expiresAt <= now + 5 * 60 * 1000;
 
     if (shouldRefresh) {
-      console.log(
+      console.error(
         'Access token expired or missing expiration time, refreshing...',
       );
       try {
@@ -137,7 +137,7 @@ export async function createSpotifyApi(): Promise<SpotifyApi> {
         config.accessToken = tokens.access_token;
         config.expiresAt = now + tokens.expires_in * 1000; // Convert seconds to milliseconds
         saveSpotifyConfig(config);
-        console.log('Access token refreshed successfully');
+        console.error('Access token refreshed successfully');
 
         // Clear cached API instance to force recreation with new token
         cachedSpotifyApi = null;
