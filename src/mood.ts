@@ -1,6 +1,121 @@
+import type { MaxInt, Track } from '@spotify/web-api-ts-sdk';
 import { z } from 'zod';
 import type { SpotifyHandlerExtra, tool } from './types.js';
-import { getDefaultDeviceId, handleSpotifyRequest } from './utils.js';
+import {
+  formatDuration,
+  getAccessTokenString,
+  getDefaultDeviceId,
+  handleSpotifyRequest,
+} from './utils.js';
+
+const MOODS = [
+  'happy',
+  'sad',
+  'energetic',
+  'chill',
+  'focused',
+  'romantic',
+  'nostalgic',
+  'party',
+  'workout',
+  'sleepy',
+] as const;
+
+type Mood = (typeof MOODS)[number];
+
+// Spotify deprecated /v1/recommendations in November 2024 (it returns 404 for
+// this app), so moods are built from search queries instead of seed tracks.
+const moodConfig: Record<
+  Mood,
+  { queries: string[]; description: string; emoji: string }
+> = {
+  happy: {
+    queries: ['happy feel good hits', 'good vibes', 'genre:pop happy'],
+    description: 'Upbeat and cheerful tracks to brighten your day! 🌟',
+    emoji: '😊',
+  },
+  sad: {
+    queries: ['sad songs', 'heartbreak acoustic', 'melancholy indie'],
+    description:
+      'Melancholic and introspective songs for when you need to feel understood 💙',
+    emoji: '😢',
+  },
+  energetic: {
+    queries: ['energy boost', 'adrenaline rock', 'genre:electronic energy'],
+    description: 'High-energy tracks to get your blood pumping! ⚡',
+    emoji: '⚡',
+  },
+  chill: {
+    queries: ['chill vibes', 'lofi chill', 'mellow acoustic'],
+    description: 'Relaxed and mellow vibes for unwinding 🧘‍♀️',
+    emoji: '🧘‍♀️',
+  },
+  focused: {
+    queries: ['deep focus', 'instrumental study', 'concentration piano'],
+    description: 'Concentration-friendly tracks to boost productivity 🎯',
+    emoji: '🎯',
+  },
+  romantic: {
+    queries: ['love songs', 'romantic soul', 'date night r&b'],
+    description: 'Intimate and romantic songs for special moments 💕',
+    emoji: '💕',
+  },
+  nostalgic: {
+    queries: ['throwback hits', '80s classics', '90s hits'],
+    description: 'Songs that take you back to cherished memories 📸',
+    emoji: '📸',
+  },
+  party: {
+    queries: ['party hits', 'dance party', 'genre:dance party anthems'],
+    description: 'High-energy party anthems to get the celebration started! 🎉',
+    emoji: '🎉',
+  },
+  workout: {
+    queries: ['workout motivation', 'gym hits', 'running music'],
+    description: 'Motivational tracks to power through your workout! 💪',
+    emoji: '💪',
+  },
+  sleepy: {
+    queries: ['sleep calm piano', 'bedtime acoustic', 'ambient sleep'],
+    description: 'Gentle and soothing songs to help you drift off to sleep 🌙',
+    emoji: '🌙',
+  },
+};
+
+// Fisher-Yates shuffle
+function shuffleTracks<T>(items: T[]): T[] {
+  const result = [...items];
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+}
+
+async function findMoodTracks(mood: Mood, limit: number): Promise<Track[]> {
+  const { queries } = moodConfig[mood];
+
+  const results = await handleSpotifyRequest(async (spotifyApi) => {
+    return await Promise.all(
+      queries.map((query) =>
+        spotifyApi.search(query, ['track'], undefined, 50 as MaxInt<50>),
+      ),
+    );
+  });
+
+  const seen = new Set<string>();
+  const pool: Track[] = [];
+  for (const result of results) {
+    for (const track of result.tracks?.items ?? []) {
+      if (track?.id && !seen.has(track.id)) {
+        seen.add(track.id);
+        pool.push(track);
+      }
+    }
+  }
+
+  return shuffleTracks(pool).slice(0, limit);
+}
 
 // Mood-based playlist generator with time awareness
 const createMoodPlaylist: tool<{
@@ -25,20 +140,7 @@ const createMoodPlaylist: tool<{
   description:
     'Create a personalized playlist based on your mood and current time of day',
   schema: {
-    mood: z
-      .enum([
-        'happy',
-        'sad',
-        'energetic',
-        'chill',
-        'focused',
-        'romantic',
-        'nostalgic',
-        'party',
-        'workout',
-        'sleepy',
-      ])
-      .describe('The mood you want the playlist to reflect'),
+    mood: z.enum(MOODS).describe('The mood you want the playlist to reflect'),
     duration: z
       .enum(['short', 'medium', 'long'])
       .optional()
@@ -53,7 +155,7 @@ const createMoodPlaylist: tool<{
   handler: async (args, _extra: SpotifyHandlerExtra) => {
     const { mood, duration = 'medium', includeTimeBased = true } = args;
 
-    // Get current time for time-based recommendations
+    // Get current time for time-based naming
     const now = new Date();
     const hour = now.getHours();
     const timeOfDay =
@@ -65,135 +167,14 @@ const createMoodPlaylist: tool<{
             ? 'afternoon'
             : 'evening';
 
-    // Define mood-based seed tracks and genres
-    const moodConfig = {
-      happy: {
-        genres: ['pop', 'indie-pop', 'dance', 'funk'],
-        seedTracks: [
-          '60nZcImufyMA1MKQY3dcCH',
-          '1mea3bSkSGXuIRvnydlB5b',
-          '0VjIjW4WU7z59J0L1QpNnp',
-        ],
-        description: 'Upbeat and cheerful tracks to brighten your day! 🌟',
-      },
-      sad: {
-        genres: ['indie', 'folk', 'acoustic', 'alternative'],
-        seedTracks: [
-          '4uLU6hMCjMI75M1A2tKUQC',
-          '1mea3bSkSGXuIRvnydlB5b',
-          '0VjIjW4WU7z59J0L1QpNnp',
-        ],
-        description:
-          'Melancholic and introspective songs for when you need to feel understood 💙',
-      },
-      energetic: {
-        genres: ['rock', 'electronic', 'dance', 'pop'],
-        seedTracks: [
-          '3gVhsZtseYtY1fMuyYq06F',
-          '4iV5W9uYEdYUVa79Axb7Rh',
-          '1mea3bSkSGXuIRvnydlB5b',
-        ],
-        description: 'High-energy tracks to get your blood pumping! ⚡',
-      },
-      chill: {
-        genres: ['ambient', 'indie', 'jazz', 'lounge'],
-        seedTracks: [
-          '0VjIjW4WU7z59J0L1QpNnp',
-          '4uLU6hMCjMI75M1A2tKUQC',
-          '1mea3bSkSGXuIRvnydlB5b',
-        ],
-        description: 'Relaxed and mellow vibes for unwinding 🧘‍♀️',
-      },
-      focused: {
-        genres: ['instrumental', 'ambient', 'classical', 'electronic'],
-        seedTracks: [
-          '0VjIjW4WU7z59J0L1QpNnp',
-          '4uLU6hMCjMI75M1A2tKUQC',
-          '1mea3bSkSGXuIRvnydlB5b',
-        ],
-        description: 'Concentration-friendly tracks to boost productivity 🎯',
-      },
-      romantic: {
-        genres: ['r&b', 'soul', 'indie', 'pop'],
-        seedTracks: [
-          '4uLU6hMCjMI75M1A2tKUQC',
-          '0VjIjW4WU7z59J0L1QpNnp',
-          '1mea3bSkSGXuIRvnydlB5b',
-        ],
-        description: 'Intimate and romantic songs for special moments 💕',
-      },
-      nostalgic: {
-        genres: ['indie', 'folk', 'alternative', 'rock'],
-        seedTracks: [
-          '4uLU6hMCjMI75M1A2tKUQC',
-          '0VjIjW4WU7z59J0L1QpNnp',
-          '1mea3bSkSGXuIRvnydlB5b',
-        ],
-        description: 'Songs that take you back to cherished memories 📸',
-      },
-      party: {
-        genres: ['dance', 'pop', 'electronic', 'hip-hop'],
-        seedTracks: [
-          '3gVhsZtseYtY1fMuyYq06F',
-          '4iV5W9uYEdYUVa79Axb7Rh',
-          '1mea3bSkSGXuIRvnydlB5b',
-        ],
-        description:
-          'High-energy party anthems to get the celebration started! 🎉',
-      },
-      workout: {
-        genres: ['rock', 'electronic', 'hip-hop', 'pop'],
-        seedTracks: [
-          '3gVhsZtseYtY1fMuyYq06F',
-          '4iV5W9uYEdYUVa79Axb7Rh',
-          '1mea3bSkSGXuIRvnydlB5b',
-        ],
-        description: 'Motivational tracks to power through your workout! 💪',
-      },
-      sleepy: {
-        genres: ['ambient', 'classical', 'indie', 'acoustic'],
-        seedTracks: [
-          '0VjIjW4WU7z59J0L1QpNnp',
-          '4uLU6hMCjMI75M1A2tKUQC',
-          '1mea3bSkSGXuIRvnydlB5b',
-        ],
-        description:
-          'Gentle and soothing songs to help you drift off to sleep 🌙',
-      },
-    };
-
     const config = moodConfig[mood];
     const trackCount =
       duration === 'short' ? 15 : duration === 'medium' ? 25 : 45;
 
     try {
-      // Get recommendations based on mood
-      const recommendations = await handleSpotifyRequest(async (spotifyApi) => {
-        return await spotifyApi.recommendations.get({
-          seed_tracks: config.seedTracks,
-          limit: trackCount,
-          target_energy:
-            mood === 'energetic' || mood === 'party' || mood === 'workout'
-              ? 0.8
-              : mood === 'chill' || mood === 'sleepy' || mood === 'focused'
-                ? 0.3
-                : 0.5,
-          target_valence:
-            mood === 'happy' || mood === 'party'
-              ? 0.8
-              : mood === 'sad' || mood === 'nostalgic'
-                ? 0.2
-                : 0.5,
-          target_danceability:
-            mood === 'party' || mood === 'workout'
-              ? 0.8
-              : mood === 'focused' || mood === 'sleepy'
-                ? 0.3
-                : 0.5,
-        });
-      });
+      const tracks = await findMoodTracks(mood, trackCount);
 
-      if (recommendations.tracks.length === 0) {
+      if (tracks.length === 0) {
         return {
           content: [
             {
@@ -229,19 +210,16 @@ const createMoodPlaylist: tool<{
       });
 
       // Add tracks to playlist
-      const trackUris = recommendations.tracks.map(
-        (track) => `spotify:track:${track.id}`,
-      );
+      const trackUris = tracks.map((track) => `spotify:track:${track.id}`);
       await handleSpotifyRequest(async (spotifyApi) => {
         await spotifyApi.playlists.addItemsToPlaylist(playlist.id, trackUris);
       });
 
       // Format track list for display
-      const trackList = recommendations.tracks
+      const trackList = tracks
         .map((track, i) => {
           const artists = track.artists.map((a) => a.name).join(', ');
-          const duration = Math.floor(track.duration_ms / 60000);
-          return `${i + 1}. "${track.name}" by ${artists} (${duration}:${String(Math.floor((track.duration_ms % 60000) / 1000)).padStart(2, '0')})`;
+          return `${i + 1}. "${track.name}" by ${artists} (${formatDuration(track.duration_ms)})`;
         })
         .join('\n');
 
@@ -249,7 +227,7 @@ const createMoodPlaylist: tool<{
         content: [
           {
             type: 'text',
-            text: `# 🎵 ${playlistName} Created! 🎵\n\n${config.description}\n\n**Playlist Details:**\n- **Name**: ${playlistName}\n- **Tracks**: ${recommendations.tracks.length}\n- **Duration**: ${duration}\n- **Time**: ${timeOfDay}\n- **Playlist ID**: ${playlist.id}\n\n**Track List:**\n${trackList}\n\n🎉 Your mood playlist is ready to play! Use the playMusic tool with playlist ID "${playlist.id}" to start listening.`,
+            text: `# 🎵 ${playlistName} Created! 🎵\n\n${config.description}\n\n**Playlist Details:**\n- **Name**: ${playlistName}\n- **Tracks**: ${tracks.length}\n- **Duration**: ${duration}\n- **Time**: ${timeOfDay}\n- **Playlist ID**: ${playlist.id}\n\n**Track List:**\n${trackList}\n\n🎉 Your mood playlist is ready to play! Use the playMusic tool with playlist ID "${playlist.id}" to start listening.`,
           },
         ],
       };
@@ -290,20 +268,7 @@ const quickMoodBoost: tool<{
   name: 'quickMoodBoost',
   description: 'Instantly play a single track to match your current mood',
   schema: {
-    mood: z
-      .enum([
-        'happy',
-        'sad',
-        'energetic',
-        'chill',
-        'focused',
-        'romantic',
-        'nostalgic',
-        'party',
-        'workout',
-        'sleepy',
-      ])
-      .describe('The mood you want to boost'),
+    mood: z.enum(MOODS).describe('The mood you want to boost'),
     deviceId: z
       .string()
       .optional()
@@ -312,50 +277,51 @@ const quickMoodBoost: tool<{
   handler: async (args, _extra: SpotifyHandlerExtra) => {
     const { mood, deviceId } = args;
 
-    // Use provided deviceId, or default device, or empty string
-    const targetDeviceId = deviceId || (await getDefaultDeviceId()) || '';
-
-    // Quick mood-based track selection
-    const moodTracks = {
-      happy: '60nZcImufyMA1MKQY3dcCH', // Pharrell Williams - Happy
-      sad: '4uLU6hMCjMI75M1A2tKUQC', // Example sad track
-      energetic: '3gVhsZtseYtY1fMuyYq06F', // Example energetic track
-      chill: '0VjIjW4WU7z59J0L1QpNnp', // Example chill track
-      focused: '1mea3bSkSGXuIRvnydlB5b', // Example focused track
-      romantic: '4uLU6hMCjMI75M1A2tKUQC', // Example romantic track
-      nostalgic: '0VjIjW4WU7z59J0L1QpNnp', // Example nostalgic track
-      party: '3gVhsZtseYtY1fMuyYq06F', // Example party track
-      workout: '4iV5W9uYEdYUVa79Axb7Rh', // Example workout track
-      sleepy: '0VjIjW4WU7z59J0L1QpNnp', // Example sleepy track
-    };
-
-    const trackId = moodTracks[mood];
-
     try {
-      await handleSpotifyRequest(async (spotifyApi) => {
-        await spotifyApi.player.startResumePlayback(targetDeviceId, undefined, [
-          `spotify:track:${trackId}`,
-        ]);
+      // Pick a fresh track for the mood each time
+      const [track] = await findMoodTracks(mood, 1);
+
+      if (!track) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Sorry, I couldn't find a ${mood} track for you right now. Try a different mood!`,
+            },
+          ],
+        };
+      }
+
+      // Use direct REST API call to avoid JSON parsing issues
+      const accessToken = await getAccessTokenString();
+      const targetDeviceId = deviceId || (await getDefaultDeviceId());
+
+      const url = new URL('https://api.spotify.com/v1/me/player/play');
+      if (targetDeviceId) {
+        url.searchParams.append('device_id', targetDeviceId);
+      }
+
+      const response = await fetch(url.toString(), {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ uris: [`spotify:track:${track.id}`] }),
       });
 
-      const moodEmojis = {
-        happy: '😊',
-        sad: '😢',
-        energetic: '⚡',
-        chill: '🧘‍♀️',
-        focused: '🎯',
-        romantic: '💕',
-        nostalgic: '📸',
-        party: '🎉',
-        workout: '💪',
-        sleepy: '🌙',
-      };
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Spotify API error: ${response.status} ${errorText}`);
+      }
+
+      const artists = track.artists.map((a) => a.name).join(', ');
 
       return {
         content: [
           {
             type: 'text',
-            text: `${moodEmojis[mood]} Playing a ${mood} track to boost your mood! The music should start playing on your device now.`,
+            text: `${moodConfig[mood].emoji} Playing "${track.name}" by ${artists} to boost your ${mood} mood!`,
           },
         ],
       };
@@ -391,19 +357,7 @@ const surpriseMe: tool<{
       ),
   },
   handler: async (args, _extra: SpotifyHandlerExtra) => {
-    const moods = [
-      'happy',
-      'sad',
-      'energetic',
-      'chill',
-      'focused',
-      'romantic',
-      'nostalgic',
-      'party',
-      'workout',
-      'sleepy',
-    ] as const;
-    const randomMood = moods[Math.floor(Math.random() * moods.length)];
+    const randomMood = MOODS[Math.floor(Math.random() * MOODS.length)];
 
     // Call the createMoodPlaylist tool with the random mood
     return await createMoodPlaylist.handler(
