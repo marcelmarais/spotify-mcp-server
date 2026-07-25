@@ -12,17 +12,28 @@ if [ -z "$QUERY" ]; then
   exit 1
 fi
 
+# Free-text mode: try DJ voice commands (pause, next, moods, surprise...)
+# before treating the text as a music search
+if [ "$TYPE" = "all" ]; then
+  "$(dirname "$0")/dj-dispatch.sh" "$QUERY" && exit 0
+fi
+
 # Open Spotify if not running
 if ! pgrep -x "Spotify" > /dev/null; then
   open -a Spotify
   sleep 4
 fi
 
+# Lowercase (Spotify search is case-insensitive; BSD sed has no /i flag)
+# and strip leading command words ("toca", "play", ...) so they don't
+# pollute the search query
+CLEAN_QUERY=$(printf '%s' "$QUERY" | tr '[:upper:]' '[:lower:]' | sed -E 's/^(toca|tocar|toque|play|coloca|colocar|bota|botar|poe|põe)[[:space:]]+((a|o)[[:space:]]+)?((musica|música|som|faixa)[[:space:]]+)?//')
+
 # Parse patterns
-PARSED_QUERY="$QUERY"
-if echo "$QUERY" | grep -qi " by \| from \| - \| de \| do \| da "; then
-  SONG=$(echo "$QUERY" | sed -E 's/(.+) (by|from|de|do|da|-) (.+)/\1/i' | xargs)
-  ARTIST=$(echo "$QUERY" | sed -E 's/(.+) (by|from|de|do|da|-) (.+)/\3/i' | xargs)
+PARSED_QUERY="$CLEAN_QUERY"
+if echo "$CLEAN_QUERY" | grep -q " by \| from \| - \| de \| do \| da "; then
+  SONG=$(echo "$CLEAN_QUERY" | sed -E 's/(.+) (by|from|de|do|da|-) (.+)/\1/' | xargs)
+  ARTIST=$(echo "$CLEAN_QUERY" | sed -E 's/(.+) (by|from|de|do|da|-) (.+)/\3/' | xargs)
   if [ -n "$SONG" ] && [ -n "$ARTIST" ]; then
     PARSED_QUERY="track:${SONG} artist:${ARTIST}"
     TYPE="track"

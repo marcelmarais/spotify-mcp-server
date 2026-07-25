@@ -1,5 +1,6 @@
 import type { MaxInt, Track } from '@spotify/web-api-ts-sdk';
 import { z } from 'zod';
+import { playMusic } from './play.js';
 import type { SpotifyHandlerExtra, tool } from './types.js';
 import {
   formatDuration,
@@ -27,56 +28,71 @@ type Mood = (typeof MOODS)[number];
 // this app), so moods are built from search queries instead of seed tracks.
 const moodConfig: Record<
   Mood,
-  { queries: string[]; description: string; emoji: string }
+  {
+    queries: string[];
+    playlistQuery: string;
+    description: string;
+    emoji: string;
+  }
 > = {
   happy: {
     queries: ['happy feel good hits', 'good vibes', 'genre:pop happy'],
+    playlistQuery: 'happy hits',
     description: 'Upbeat and cheerful tracks to brighten your day! 🌟',
     emoji: '😊',
   },
   sad: {
     queries: ['sad songs', 'heartbreak acoustic', 'melancholy indie'],
+    playlistQuery: 'sad songs',
     description:
       'Melancholic and introspective songs for when you need to feel understood 💙',
     emoji: '😢',
   },
   energetic: {
     queries: ['energy boost', 'adrenaline rock', 'genre:electronic energy'],
+    playlistQuery: 'high energy hits',
     description: 'High-energy tracks to get your blood pumping! ⚡',
     emoji: '⚡',
   },
   chill: {
     queries: ['chill vibes', 'lofi chill', 'mellow acoustic'],
+    playlistQuery: 'chill hits',
     description: 'Relaxed and mellow vibes for unwinding 🧘‍♀️',
     emoji: '🧘‍♀️',
   },
   focused: {
     queries: ['deep focus', 'instrumental study', 'concentration piano'],
+    playlistQuery: 'deep focus',
     description: 'Concentration-friendly tracks to boost productivity 🎯',
     emoji: '🎯',
   },
   romantic: {
     queries: ['love songs', 'romantic soul', 'date night r&b'],
+    playlistQuery: 'love songs',
     description: 'Intimate and romantic songs for special moments 💕',
     emoji: '💕',
   },
   nostalgic: {
     queries: ['throwback hits', '80s classics', '90s hits'],
+    playlistQuery: 'throwback hits',
     description: 'Songs that take you back to cherished memories 📸',
     emoji: '📸',
   },
   party: {
     queries: ['party hits', 'dance party', 'genre:dance party anthems'],
+    playlistQuery: 'party hits',
     description: 'High-energy party anthems to get the celebration started! 🎉',
     emoji: '🎉',
   },
   workout: {
     queries: ['workout motivation', 'gym hits', 'running music'],
+    playlistQuery: 'workout motivation',
     description: 'Motivational tracks to power through your workout! 💪',
     emoji: '💪',
   },
   sleepy: {
     queries: ['sleep calm piano', 'bedtime acoustic', 'ambient sleep'],
+    playlistQuery: 'sleep',
     description: 'Gentle and soothing songs to help you drift off to sleep 🌙',
     emoji: '🌙',
   },
@@ -341,6 +357,119 @@ const quickMoodBoost: tool<{
   },
 };
 
+// Play mood music - finds a popular playlist for the mood and plays it
+const playMood: tool<{
+  mood: z.ZodEnum<
+    [
+      'happy',
+      'sad',
+      'energetic',
+      'chill',
+      'focused',
+      'romantic',
+      'nostalgic',
+      'party',
+      'workout',
+      'sleepy',
+    ]
+  >;
+  deviceId: z.ZodOptional<z.ZodString>;
+}> = {
+  name: 'playMood',
+  description:
+    'Find a popular playlist matching a mood and start playing it shuffled, for continuous mood music without cluttering the library',
+  schema: {
+    mood: z.enum(MOODS).describe('The mood to play music for'),
+    deviceId: z
+      .string()
+      .optional()
+      .describe('The Spotify device ID to play on'),
+  },
+  handler: async (args, extra) => {
+    const { mood, deviceId } = args;
+    const config = moodConfig[mood];
+
+    try {
+      const results = await handleSpotifyRequest(async (spotifyApi) => {
+        return await spotifyApi.search(
+          config.playlistQuery,
+          ['playlist'],
+          undefined,
+          10 as MaxInt<50>,
+        );
+      });
+
+      // Playlist search results can contain null entries
+      const playlists = (results.playlists?.items ?? []).filter(
+        (p) => p?.id && p?.name,
+      );
+
+      if (playlists.length === 0) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Sorry, I couldn't find a ${mood} playlist right now. Try a different mood!`,
+            },
+          ],
+        };
+      }
+
+      // Pick one of the top results for variety between calls
+      const playlist =
+        playlists[Math.floor(Math.random() * Math.min(playlists.length, 5))];
+
+      // Reuse playMusic for its device fallback logic
+      const playResult = await playMusic.handler(
+        { uri: `spotify:playlist:${playlist.id}`, deviceId },
+        extra,
+      );
+      const playText = playResult.content[0]?.text ?? '';
+      if (playText.startsWith('Error')) {
+        return playResult;
+      }
+
+      // Shuffle for variety; not critical, so failures are ignored
+      try {
+        const token = await getAccessTokenString();
+        const params = new URLSearchParams({ state: 'true' });
+        const targetDeviceId = deviceId || (await getDefaultDeviceId());
+        if (targetDeviceId) params.append('device_id', targetDeviceId);
+        await fetch(
+          `https://api.spotify.com/v1/me/player/shuffle?${params.toString()}`,
+          {
+            method: 'PUT',
+            headers: { Authorization: `Bearer ${token}` },
+          },
+        );
+      } catch (_error) {
+        // Playback already started; shuffle is best-effort
+      }
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `${config.emoji} Playing "${playlist.name}" (${mood} mood, shuffle on)`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error playing ${mood} music: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+            isError: true,
+          },
+        ],
+      };
+    }
+  },
+};
+
 // Surprise me tool - completely random mood and playlist
 const surpriseMe: tool<{
   duration: z.ZodOptional<z.ZodEnum<['short', 'medium', 'long']>>;
@@ -367,4 +496,9 @@ const surpriseMe: tool<{
   },
 };
 
-export const moodTools = [createMoodPlaylist, quickMoodBoost, surpriseMe];
+export const moodTools = [
+  createMoodPlaylist,
+  quickMoodBoost,
+  playMood,
+  surpriseMe,
+];

@@ -55,7 +55,7 @@ const setShuffle: tool<{
   },
 };
 
-const playMusic: tool<{
+export const playMusic: tool<{
   uri: z.ZodOptional<z.ZodString>;
   type: z.ZodOptional<z.ZodEnum<['track', 'album', 'artist', 'playlist']>>;
   id: z.ZodOptional<z.ZodString>;
