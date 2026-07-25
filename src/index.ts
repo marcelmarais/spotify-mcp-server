@@ -12,6 +12,7 @@ import { deviceTools } from './devices.js';
 import { moodTools } from './mood.js';
 import { playTools } from './play.js';
 import { readTools } from './read.js';
+import type { SpotifyHandlerExtra } from './types.js';
 
 const allTools = [
   ...readTools,
@@ -142,7 +143,7 @@ async function main() {
         requestId: 'mcp-request',
         sendNotification: async () => {},
         sendRequest: async () => ({}),
-      };
+      } as unknown as SpotifyHandlerExtra;
 
       // Type assertion to handle the generic args from MCP
       const result = await tool.handler(args as any, mockExtra);
