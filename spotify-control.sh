@@ -2,7 +2,8 @@
 cd ~/studies/spotify-mcp-server
 
 TOOL="${1:-getNowPlaying}"
-ARGS="${2:-{}}"
+ARGS="${2:-}"
+[ -z "$ARGS" ] && ARGS='{}'
 
 NODE_PATH=$(ls -t /Users/dienert/.nvm/versions/node/*/bin/node 2>/dev/null | head -1)
 [ -z "$NODE_PATH" ] && NODE_PATH=$(command -v node 2>/dev/null)

@@ -215,18 +215,18 @@ const pausePlayback: tool<{
       const accessToken = await getAccessTokenString();
       const targetDeviceId = deviceId || (await getDefaultDeviceId());
 
-      const response = await fetch(
-        'https://api.spotify.com/v1/me/player/pause',
-        {
-          method: 'PUT',
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-          ...(targetDeviceId && {
-            body: JSON.stringify({ device_id: targetDeviceId }),
-          }),
+      // device_id must be sent as a query parameter, not in the body
+      const url = new URL('https://api.spotify.com/v1/me/player/pause');
+      if (targetDeviceId) {
+        url.searchParams.append('device_id', targetDeviceId);
+      }
+
+      const response = await fetch(url.toString(), {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
         },
-      );
+      });
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -276,18 +276,18 @@ const skipToNext: tool<{
       const accessToken = await getAccessTokenString();
       const targetDeviceId = deviceId || (await getDefaultDeviceId());
 
-      const response = await fetch(
-        'https://api.spotify.com/v1/me/player/next',
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-          ...(targetDeviceId && {
-            body: JSON.stringify({ device_id: targetDeviceId }),
-          }),
+      // device_id must be sent as a query parameter, not in the body
+      const url = new URL('https://api.spotify.com/v1/me/player/next');
+      if (targetDeviceId) {
+        url.searchParams.append('device_id', targetDeviceId);
+      }
+
+      const response = await fetch(url.toString(), {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
         },
-      );
+      });
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -333,19 +333,49 @@ const skipToPrevious: tool<{
   handler: async (args, _extra: SpotifyHandlerExtra) => {
     const { deviceId } = args;
 
-    await handleSpotifyRequest(async (spotifyApi) => {
-      const targetDeviceId = deviceId || (await getDefaultDeviceId()) || '';
-      await spotifyApi.player.skipToPrevious(targetDeviceId);
-    });
+    try {
+      // Use direct REST API call to avoid JSON parsing issues
+      const accessToken = await getAccessTokenString();
+      const targetDeviceId = deviceId || (await getDefaultDeviceId());
 
-    return {
-      content: [
-        {
-          type: 'text',
-          text: 'Skipped to previous track',
+      const url = new URL('https://api.spotify.com/v1/me/player/previous');
+      if (targetDeviceId) {
+        url.searchParams.append('device_id', targetDeviceId);
+      }
+
+      const response = await fetch(url.toString(), {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
         },
-      ],
-    };
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Spotify API error: ${response.status} ${errorText}`);
+      }
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: 'Skipped to previous track',
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error skipping to previous track: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+            isError: true,
+          },
+        ],
+      };
+    }
   },
 };
 
@@ -472,19 +502,49 @@ const resumePlayback: tool<{
   handler: async (args, _extra: SpotifyHandlerExtra) => {
     const { deviceId } = args;
 
-    await handleSpotifyRequest(async (spotifyApi) => {
-      const targetDeviceId = deviceId || (await getDefaultDeviceId()) || '';
-      await spotifyApi.player.startResumePlayback(targetDeviceId);
-    });
+    try {
+      // Use direct REST API call to avoid JSON parsing issues
+      const accessToken = await getAccessTokenString();
+      const targetDeviceId = deviceId || (await getDefaultDeviceId());
 
-    return {
-      content: [
-        {
-          type: 'text',
-          text: 'Playback resumed',
+      const url = new URL('https://api.spotify.com/v1/me/player/play');
+      if (targetDeviceId) {
+        url.searchParams.append('device_id', targetDeviceId);
+      }
+
+      const response = await fetch(url.toString(), {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
         },
-      ],
-    };
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Spotify API error: ${response.status} ${errorText}`);
+      }
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: 'Playback resumed',
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error resuming playback: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+            isError: true,
+          },
+        ],
+      };
+    }
   },
 };
 
