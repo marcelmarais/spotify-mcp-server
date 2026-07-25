@@ -1,7 +1,11 @@
 import type { MaxInt } from '@spotify/web-api-ts-sdk';
 import { z } from 'zod';
 import type { SpotifyHandlerExtra, SpotifyTrack, tool } from './types.js';
-import { formatDuration, handleSpotifyRequest, getAccessTokenString } from './utils.js';
+import {
+  formatDuration,
+  getAccessTokenString,
+  handleSpotifyRequest,
+} from './utils.js';
 
 function isTrack(item: any): item is SpotifyTrack {
   return (
@@ -589,7 +593,7 @@ const saveOrRemoveTrackForUser: tool<{
       const response = await fetch('https://api.spotify.com/v1/me/tracks', {
         method: endpoint,
         headers: {
-          'Authorization': `Bearer ${accessToken}`,
+          Authorization: `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ ids: trackIds }),
@@ -670,7 +674,7 @@ const likeCurrentTrack: tool<Record<string, never>> = {
       const response = await fetch('https://api.spotify.com/v1/me/tracks', {
         method: 'PUT',
         headers: {
-          'Authorization': `Bearer ${accessToken}`,
+          Authorization: `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ ids: [item.id] }),

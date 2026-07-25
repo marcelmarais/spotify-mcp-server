@@ -130,11 +130,7 @@ async function main() {
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
 
-<<<<<<< HEAD
     const tool = allTools.find((t) => t.name === name);
-=======
-    const tool = allTools.find(t => t.name === name);
->>>>>>> f002b3e (Add Siri shortcuts, mood tools, and robustness improvements)
     if (!tool) {
       throw new Error(`Tool not found: ${name}`);
     }
@@ -144,7 +140,7 @@ async function main() {
       const mockExtra = {
         signal: new AbortController().signal,
         requestId: 'mcp-request',
-        sendNotification: async () => { },
+        sendNotification: async () => {},
         sendRequest: async () => ({}),
       };
 
@@ -158,8 +154,9 @@ async function main() {
         content: [
           {
             type: 'text',
-            text: `Error executing tool "${name}": ${error instanceof Error ? error.message : String(error)
-              }`,
+            text: `Error executing tool "${name}": ${
+              error instanceof Error ? error.message : String(error)
+            }`,
           },
         ],
         isError: true,

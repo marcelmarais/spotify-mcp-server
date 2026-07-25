@@ -542,7 +542,10 @@ const addToQueue: tool<{
                   );
                 });
               } catch (error) {
-                console.error(`Failed to add track ${trackId} to queue:`, error);
+                console.error(
+                  `Failed to add track ${trackId} to queue:`,
+                  error,
+                );
                 // Continue with other tracks even if one fails
               }
             }

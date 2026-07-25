@@ -35,7 +35,8 @@ export function loadSpotifyConfig(): SpotifyConfig {
     return config;
   } catch (error) {
     throw new Error(
-      `Failed to parse Spotify configuration: ${error instanceof Error ? error.message : String(error)
+      `Failed to parse Spotify configuration: ${
+        error instanceof Error ? error.message : String(error)
       }`,
     );
   }
@@ -409,7 +410,9 @@ export async function getAccessTokenString(): Promise<string> {
 }
 
 // Get device ID by device name
-export async function getDeviceIdByName(deviceName: string): Promise<string | null> {
+export async function getDeviceIdByName(
+  deviceName: string,
+): Promise<string | null> {
   try {
     const spotifyApi = createSpotifyApi();
     const devicesResponse = await spotifyApi.player.getAvailableDevices();
