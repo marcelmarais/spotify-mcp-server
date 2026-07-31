@@ -54,6 +54,7 @@ const searchSpotify: tool<{
   query: z.ZodString;
   type: z.ZodEnum<[SearchType, ...SearchType[]]>;
   limit: z.ZodOptional<z.ZodNumber>;
+  offset: z.ZodOptional<z.ZodNumber>;
 }> = {
   name: 'searchSpotify',
   description:
@@ -75,13 +76,21 @@ const searchSpotify: tool<{
     limit: z
       .number()
       .min(1)
-      .max(50)
+      .max(10)
       .optional()
-      .describe('Maximum number of results to return (default: 10, max: 50)'),
+      .describe('Maximum number of results to return (default: 10, max: 10)'),
+    offset: z
+      .number()
+      .min(0)
+      .optional()
+      .describe(
+        'Index of the first result to return (default: 0). Combine with limit to page past the first 10 results.',
+      ),
   },
   handler: async (args, _extra: SpotifyHandlerExtra) => {
-    const { query, type, limit } = args;
+    const { query, type, limit, offset } = args;
     const limitValue = limit ?? 10;
+    const offsetValue = offset ?? 0;
 
     try {
       let formattedResults = '';
@@ -92,7 +101,13 @@ const searchSpotify: tool<{
         const searchResults = await spotifyFetch<SpotifySearchEpisodesResponse>(
           'search',
           {
-            query: { q: query, type, limit: limitValue, market: 'from_token' },
+            query: {
+              q: query,
+              type,
+              limit: limitValue,
+              offset: offsetValue,
+              market: 'from_token',
+            },
           },
         );
         const ids = searchResults.episodes.items
@@ -114,7 +129,13 @@ const searchSpotify: tool<{
         const results = await spotifyFetch<SpotifySearchShowsResponse>(
           'search',
           {
-            query: { q: query, type, limit: limitValue, market: 'from_token' },
+            query: {
+              q: query,
+              type,
+              limit: limitValue,
+              offset: offsetValue,
+              market: 'from_token',
+            },
           },
         );
         formattedResults = results.shows.items
@@ -128,6 +149,7 @@ const searchSpotify: tool<{
             [type],
             undefined,
             limitValue as MaxInt<50>,
+            offsetValue,
           );
         });
 
