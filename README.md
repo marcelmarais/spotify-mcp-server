@@ -40,9 +40,10 @@ A lightweight [Model Context Protocol (MCP)](https://modelcontextprotocol.io) se
    - **Parameters**:
      - `query` (string): The search term
      - `type` (string): Type of item to search for (track, album, artist, playlist)
-     - `limit` (number, optional): Maximum number of results to return (10-50)
+     - `limit` (number, optional): Maximum number of results to return (1-10, default: 10)
+     - `offset` (number, optional): Index of the first result to return (default: 0)
    - **Returns**: List of matching items with their IDs, names, and additional details
-   - **Example**: `searchSpotify("bohemian rhapsody", "track", 20)`
+   - **Example**: `searchSpotify("bohemian rhapsody", "track", 10)`
 
 2. **getNowPlaying**
 
