@@ -330,7 +330,13 @@ const getMyPlaylists: tool<{
 
     const formattedPlaylists = playlists.items
       .map((playlist, i) => {
-        const tracksTotal = playlist.tracks?.total ? playlist.tracks.total : 0;
+        // /me/playlists returns the track container as `items` since the March
+        // 2026 migration; older responses (and the SDK types) still say `tracks`.
+        const counts = playlist as unknown as {
+          tracks?: { total?: number };
+          items?: { total?: number };
+        };
+        const tracksTotal = counts.tracks?.total ?? counts.items?.total ?? 0;
         return `${i + 1}. "${playlist.name}" (${tracksTotal} tracks) - ID: ${
           playlist.id
         }`;
