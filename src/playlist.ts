@@ -21,7 +21,16 @@ const getPlaylist: tool<{
 
       const owner =
         playlist.owner?.display_name ?? playlist.owner?.id ?? 'Unknown';
-      const tracksTotal = playlist.tracks?.total ?? 0;
+      // The March 2026 API migration dropped the embedded `tracks` paging
+      // object from GET /playlists/{id} for Development Mode apps (replaced
+      // by a top-level `items` field of the same shape) — fetch the count
+      // directly instead of trusting playlist.tracks.total, which is always
+      // undefined now. See spotifyFetch JSDoc for more context.
+      const trackCount = await spotifyFetch<{ total: number }>(
+        `playlists/${playlistId}/items`,
+        { query: { limit: 1, fields: 'total' } },
+      ).catch(() => ({ total: playlist.tracks?.total ?? 0 }));
+      const tracksTotal = trackCount.total ?? 0;
       const isPublic = playlist.public ? 'Public' : 'Private';
       const isCollaborative = playlist.collaborative ? ' | Collaborative' : '';
       const description = playlist.description

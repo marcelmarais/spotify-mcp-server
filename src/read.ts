@@ -328,9 +328,19 @@ const getMyPlaylists: tool<{
       };
     }
 
+    // GET /me/playlists no longer embeds a tracks count at all post-migration
+    // (see spotifyFetch JSDoc) — fetch each playlist's real count directly.
+    const trackCounts = await Promise.all(
+      playlists.items.map((playlist) =>
+        spotifyFetch<{ total: number }>(`playlists/${playlist.id}/items`, {
+          query: { limit: 1, fields: 'total' },
+        }).catch(() => ({ total: playlist.tracks?.total ?? 0 })),
+      ),
+    );
+
     const formattedPlaylists = playlists.items
       .map((playlist, i) => {
-        const tracksTotal = playlist.tracks?.total ? playlist.tracks.total : 0;
+        const tracksTotal = trackCounts[i]?.total ?? 0;
         return `${i + 1}. "${playlist.name}" (${tracksTotal} tracks) - ID: ${
           playlist.id
         }`;
