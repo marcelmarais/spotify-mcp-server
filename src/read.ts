@@ -297,6 +297,7 @@ const getNowPlaying: tool<Record<string, never>> = {
 
 const getMyPlaylists: tool<{
   limit: z.ZodOptional<z.ZodNumber>;
+  offset: z.ZodOptional<z.ZodNumber>;
 }> = {
   name: 'getMyPlaylists',
   description: "Get a list of the current user's playlists on Spotify",
@@ -307,13 +308,19 @@ const getMyPlaylists: tool<{
       .max(50)
       .optional()
       .describe('Maximum number of playlists to return (1-50)'),
+    offset: z
+      .number()
+      .min(0)
+      .optional()
+      .describe('Offset for pagination (0-based index)'),
   },
   handler: async (args, _extra: SpotifyHandlerExtra) => {
-    const { limit = 50 } = args;
+    const { limit = 50, offset = 0 } = args;
 
     const playlists = await handleSpotifyRequest(async (spotifyApi) => {
       return await spotifyApi.currentUser.playlists.playlists(
         limit as MaxInt<50>,
+        offset,
       );
     });
 
@@ -322,7 +329,10 @@ const getMyPlaylists: tool<{
         content: [
           {
             type: 'text',
-            text: "You don't have any playlists on Spotify",
+            text:
+              offset > 0
+                ? `No playlists found at offset ${offset} (you have ${playlists.total} in total)`
+                : "You don't have any playlists on Spotify",
           },
         ],
       };
@@ -337,7 +347,7 @@ const getMyPlaylists: tool<{
           items?: { total?: number };
         };
         const tracksTotal = counts.tracks?.total ?? counts.items?.total ?? 0;
-        return `${i + 1}. "${playlist.name}" (${tracksTotal} tracks) - ID: ${
+        return `${offset + i + 1}. "${playlist.name}" (${tracksTotal} tracks) - ID: ${
           playlist.id
         }`;
       })
@@ -347,7 +357,9 @@ const getMyPlaylists: tool<{
       content: [
         {
           type: 'text',
-          text: `# Your Spotify Playlists\n\n${formattedPlaylists}`,
+          text: `# Your Spotify Playlists (${offset + 1}-${
+            offset + playlists.items.length
+          } of ${playlists.total})\n\n${formattedPlaylists}`,
         },
       ],
     };
