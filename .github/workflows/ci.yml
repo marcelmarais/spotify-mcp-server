@@ -11,12 +11,8 @@ permissions:
 
 jobs:
   check:
-    name: Check (Node ${{ matrix.node }})
+    name: Check (latest Node)
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        node: [22, 24, 26]
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -24,7 +20,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: ${{ matrix.node }}
+          node-version: 'node'
+          check-latest: true
           cache: npm
 
       - name: Install dependencies
