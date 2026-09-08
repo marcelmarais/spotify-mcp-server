@@ -1,15 +1,16 @@
 {
-  "$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.5.12/schema.json",
   "files": {
     "ignoreUnknown": false,
-    "ignore": [
-      "**/pnpm-lock.yaml",
-      "lib/db/migrations",
-      "lib/editor/react-renderer.tsx",
-      "node_modules",
-      ".next",
-      "public",
-      ".vercel"
+    "includes": [
+      "**",
+      "!**/pnpm-lock.yaml",
+      "!**/lib/db/migrations",
+      "!**/lib/editor/react-renderer.tsx",
+      "!**/node_modules",
+      "!**/.next",
+      "!**/public",
+      "!**/.vercel"
     ]
   },
   "vcs": {
@@ -30,7 +31,7 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true,
+      "preset": "recommended",
       "a11y": {
         "useHtmlLang": "warn", // Not in recommended ruleset, turning on manually
         "noHeaderScope": "warn", // Not in recommended ruleset, turning on manually
@@ -45,10 +46,11 @@
         "noSvgWithoutTitle": "off", // We do not intend to adhere to this rule
         "useMediaCaption": "off", // We would need a cultural change to turn this on
         "noAutofocus": "off", // We're highly intentional about when we use autofocus
-        "noBlankTarget": "off", // Covered by Conformance
         "useFocusableInteractive": "off", // Disable focusable interactive element requirement
         "useAriaPropsForRole": "off", // Disable required ARIA attributes check
-        "useKeyWithClickEvents": "off" // Disable keyboard event requirement with click events
+        "useKeyWithClickEvents": "off", // Disable keyboard event requirement with click events
+        "noStaticElementInteractions": "warn",
+        "useValidAutocomplete": "warn"
       },
       "complexity": {
         "noUselessStringConcat": "warn",
@@ -58,19 +60,19 @@
         "noUselessTernary": "error",
         "useFlatMap": "error",
         "useOptionalChain": "error",
-        "useSimplifiedLogicExpression": "error"
+        "useSimplifiedLogicExpression": "error",
+        "noUselessContinue": "off"
       },
       "correctness": {
         "noUnusedImports": "error",
-        "useArrayLiterals": "warn", // Not in recommended ruleset, turning on manually
-        "noNewSymbol": "warn", // Not in recommended ruleset, turning on manually
         "useJsxKeyInIterable": "off", // Rule is buggy, revisit later
         "useExhaustiveDependencies": "off", // Community feedback on this rule has been poor, we will continue with ESLint
-        "noUnnecessaryContinue": "off", // Turned off due to developer preferences
-        "noUnusedVariables": "error"
+        "noUnusedVariables": "error",
+        "noInvalidBuiltinInstantiation": "warn"
       },
       "security": {
-        "noDangerouslySetInnerHtml": "error"
+        "noDangerouslySetInnerHtml": "error",
+        "noBlankTarget": "off"
       },
       "style": {
         "useFragmentSyntax": "warn",
@@ -87,18 +89,17 @@
             "filenameCases": ["kebab-case", "export"],
             "requireAscii": true
           }
-        }
+        },
+        "useArrayLiterals": "warn"
       },
       "suspicious": {
-        "noExplicitAny": "off"
-      },
-      "nursery": {
-        "noStaticElementInteractions": "warn",
+        "noExplicitAny": "off",
         "noHeadImportInDocument": "warn",
         "noDocumentImportInPage": "warn",
         "noDuplicateElseIf": "warn",
-        "noIrregularWhitespace": "warn",
-        "useValidAutocomplete": "warn",
+        "noIrregularWhitespace": "warn"
+      },
+      "nursery": {
         "useSortedClasses": "error"
       }
     }
@@ -131,12 +132,12 @@
     "formatter": { "enabled": false },
     "linter": { "enabled": false }
   },
-  "organizeImports": { "enabled": true },
+  "assist": { "actions": { "source": { "organizeImports": "on" } } },
   "overrides": [
     // Playwright requires an object destructure, even if empty
     // https://github.com/microsoft/playwright/issues/30007
     {
-      "include": ["playwright/**"],
+      "includes": ["**/playwright/**"],
       "linter": {
         "rules": {
           "correctness": {

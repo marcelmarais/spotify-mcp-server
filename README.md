@@ -295,7 +295,7 @@ A lightweight [Model Context Protocol (MCP)](https://modelcontextprotocol.io) se
 
 ### Prerequisites
 
-- Node.js v16+
+- Node.js v22+ (CI tests Node.js 22, 24, and 26)
 - A Spotify Premium account
 - A registered Spotify Developer application
 
@@ -304,7 +304,7 @@ A lightweight [Model Context Protocol (MCP)](https://modelcontextprotocol.io) se
 ```bash
 git clone https://github.com/marcelmarais/spotify-mcp-server.git
 cd spotify-mcp-server
-npm install
+npm ci
 npm run build
 ```
 
@@ -410,3 +410,15 @@ To set up your MCP correctly with Cline ensure you have the following file confi
 ```
 
 You can add additional tools to the auto approval array to run the tools without intervention.
+
+## Development
+
+The server uses MCP TypeScript SDK v2 and Zod 4, serving protocol revision `2026-07-28` while retaining compatibility with legacy MCP clients. Node.js 22 or newer is required. Install the locked dependencies with `npm ci`.
+
+```bash
+npm run lint
+npm run typecheck
+npm test
+```
+
+Tests exercise MCP initialization, tool discovery, validation, and Spotify operations using mocked HTTP responses. They do not require Spotify credentials or change your Spotify account.

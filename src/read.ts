@@ -1,5 +1,6 @@
 import type { MaxInt } from '@spotify/web-api-ts-sdk';
 import { z } from 'zod';
+import { defineTool } from './tool.js';
 import type {
   SpotifyEpisode,
   SpotifyEpisodesResponse,
@@ -9,7 +10,6 @@ import type {
   SpotifyShow,
   SpotifySimplifiedEpisode,
   SpotifyTrack,
-  tool,
 } from './types.js';
 import {
   createSpotifyApi,
@@ -37,7 +37,6 @@ const SEARCH_TYPES = [
   'episode',
   'show',
 ] as const;
-type SearchType = (typeof SEARCH_TYPES)[number];
 
 function formatEpisode(ep: SpotifyEpisode, i: number): string {
   const duration = formatDuration(ep.duration_ms);
@@ -50,12 +49,7 @@ function formatShow(show: SpotifyShow, i: number): string {
   return `${i + 1}. "${show.name}" by ${show.publisher} (${show.total_episodes} episodes) - ID: ${show.id}`;
 }
 
-const searchSpotify: tool<{
-  query: z.ZodString;
-  type: z.ZodEnum<[SearchType, ...SearchType[]]>;
-  limit: z.ZodOptional<z.ZodNumber>;
-  offset: z.ZodOptional<z.ZodNumber>;
-}> = {
+const searchSpotify = defineTool({
   name: 'searchSpotify',
   description:
     'Search for tracks, albums, artists, playlists, podcast episodes, or shows on Spotify. ' +
@@ -209,9 +203,9 @@ const searchSpotify: tool<{
       };
     }
   },
-};
+});
 
-const getNowPlaying: tool<Record<string, never>> = {
+const getNowPlaying = defineTool({
   name: 'getNowPlaying',
   description:
     'Get information about the currently playing track on Spotify, including device and volume info',
@@ -293,12 +287,9 @@ const getNowPlaying: tool<Record<string, never>> = {
       };
     }
   },
-};
+});
 
-const getMyPlaylists: tool<{
-  limit: z.ZodOptional<z.ZodNumber>;
-  offset: z.ZodOptional<z.ZodNumber>;
-}> = {
+const getMyPlaylists = defineTool({
   name: 'getMyPlaylists',
   description: "Get a list of the current user's playlists on Spotify",
   schema: {
@@ -364,13 +355,9 @@ const getMyPlaylists: tool<{
       ],
     };
   },
-};
+});
 
-const getPlaylistTracks: tool<{
-  playlistId: z.ZodString;
-  limit: z.ZodOptional<z.ZodNumber>;
-  offset: z.ZodOptional<z.ZodNumber>;
-}> = {
+const getPlaylistTracks = defineTool({
   name: 'getPlaylistTracks',
   description: 'Get a list of tracks in a Spotify playlist',
   schema: {
@@ -443,11 +430,9 @@ const getPlaylistTracks: tool<{
       ],
     };
   },
-};
+});
 
-const getRecentlyPlayed: tool<{
-  limit: z.ZodOptional<z.ZodNumber>;
-}> = {
+const getRecentlyPlayed = defineTool({
   name: 'getRecentlyPlayed',
   description: 'Get a list of recently played tracks on Spotify',
   schema: {
@@ -505,12 +490,9 @@ const getRecentlyPlayed: tool<{
       ],
     };
   },
-};
+});
 
-const getUsersSavedTracks: tool<{
-  limit: z.ZodOptional<z.ZodNumber>;
-  offset: z.ZodOptional<z.ZodNumber>;
-}> = {
+const getUsersSavedTracks = defineTool({
   name: 'getUsersSavedTracks',
   description:
     'Get a list of tracks saved in the user\'s "Liked Songs" library',
@@ -573,11 +555,9 @@ const getUsersSavedTracks: tool<{
       ],
     };
   },
-};
+});
 
-const getQueue: tool<{
-  limit: z.ZodOptional<z.ZodNumber>;
-}> = {
+const getQueue = defineTool({
   name: 'getQueue',
   description:
     'Get a list of the currently playing track and the next items in your Spotify queue',
@@ -667,9 +647,9 @@ const getQueue: tool<{
       };
     }
   },
-};
+});
 
-const getAvailableDevices: tool<Record<string, never>> = {
+const getAvailableDevices = defineTool({
   name: 'getAvailableDevices',
   description:
     "Get information about the user's available Spotify Connect devices",
@@ -724,11 +704,9 @@ const getAvailableDevices: tool<Record<string, never>> = {
       };
     }
   },
-};
+});
 
-const removeUsersSavedTracks: tool<{
-  trackIds: z.ZodArray<z.ZodString>;
-}> = {
+const removeUsersSavedTracks = defineTool({
   name: 'removeUsersSavedTracks',
   description:
     'Remove one or more tracks from the user\'s "Liked Songs" library (max 40 per request)',
@@ -789,7 +767,7 @@ const removeUsersSavedTracks: tool<{
       };
     }
   },
-};
+});
 
 const TIME_RANGES = ['short_term', 'medium_term', 'long_term'] as const;
 type TimeRange = (typeof TIME_RANGES)[number];
@@ -800,10 +778,7 @@ const TIME_RANGE_LABEL: Record<TimeRange, string> = {
   long_term: 'last ~1 year',
 };
 
-const getTopTracks: tool<{
-  timeRange: z.ZodOptional<z.ZodEnum<[TimeRange, ...TimeRange[]]>>;
-  limit: z.ZodOptional<z.ZodNumber>;
-}> = {
+const getTopTracks = defineTool({
   name: 'getTopTracks',
   description:
     "Get the current user's top (most-played) tracks over a given time range. " +
@@ -858,12 +833,9 @@ const getTopTracks: tool<{
       ],
     };
   },
-};
+});
 
-const getTopArtists: tool<{
-  timeRange: z.ZodOptional<z.ZodEnum<[TimeRange, ...TimeRange[]]>>;
-  limit: z.ZodOptional<z.ZodNumber>;
-}> = {
+const getTopArtists = defineTool({
   name: 'getTopArtists',
   description:
     "Get the current user's top (most-played) artists over a given time range. " +
@@ -920,7 +892,7 @@ const getTopArtists: tool<{
       ],
     };
   },
-};
+});
 
 export const readTools = [
   searchSpotify,

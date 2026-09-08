@@ -1,10 +1,9 @@
 import { z } from 'zod';
-import type { SpotifyHandlerExtra, tool } from './types.js';
+import { defineTool } from './tool.js';
+import type { SpotifyHandlerExtra } from './types.js';
 import { handleSpotifyRequest, spotifyFetch } from './utils.js';
 
-const getPlaylist: tool<{
-  playlistId: z.ZodString;
-}> = {
+const getPlaylist = defineTool({
   name: 'getPlaylist',
   description:
     'Get details of a specific Spotify playlist including tracks count, description and owner',
@@ -57,15 +56,9 @@ const getPlaylist: tool<{
       };
     }
   },
-};
+});
 
-const updatePlaylist: tool<{
-  playlistId: z.ZodString;
-  name: z.ZodOptional<z.ZodString>;
-  description: z.ZodOptional<z.ZodString>;
-  public: z.ZodOptional<z.ZodBoolean>;
-  collaborative: z.ZodOptional<z.ZodBoolean>;
-}> = {
+const updatePlaylist = defineTool({
   name: 'updatePlaylist',
   description:
     'Update the details of a Spotify playlist (name, description, public/private, collaborative)',
@@ -145,13 +138,9 @@ const updatePlaylist: tool<{
       };
     }
   },
-};
+});
 
-const removeTracksFromPlaylist: tool<{
-  playlistId: z.ZodString;
-  trackIds: z.ZodArray<z.ZodString>;
-  snapshotId: z.ZodOptional<z.ZodString>;
-}> = {
+const removeTracksFromPlaylist = defineTool({
   name: 'removeTracksFromPlaylist',
   description:
     'Remove one or more tracks from a Spotify playlist (max 100 tracks per request)',
@@ -210,15 +199,9 @@ const removeTracksFromPlaylist: tool<{
       };
     }
   },
-};
+});
 
-const reorderPlaylistItems: tool<{
-  playlistId: z.ZodString;
-  rangeStart: z.ZodNumber;
-  insertBefore: z.ZodNumber;
-  rangeLength: z.ZodOptional<z.ZodNumber>;
-  snapshotId: z.ZodOptional<z.ZodString>;
-}> = {
+const reorderPlaylistItems = defineTool({
   name: 'reorderPlaylistItems',
   description:
     'Reorder a range of tracks within a Spotify playlist by moving them to a new position',
@@ -286,11 +269,9 @@ const reorderPlaylistItems: tool<{
       };
     }
   },
-};
+});
 
-const unfollowPlaylist: tool<{
-  playlistId: z.ZodString;
-}> = {
+const unfollowPlaylist = defineTool({
   name: 'unfollowPlaylist',
   description:
     "Remove a playlist from the current user's library (unfollow). " +
@@ -329,7 +310,7 @@ const unfollowPlaylist: tool<{
       };
     }
   },
-};
+});
 
 export const playlistTools = [
   getPlaylist,

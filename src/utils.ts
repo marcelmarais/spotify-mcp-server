@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import readline from 'node:readline';
-import { URL, fileURLToPath } from 'node:url';
+import { fileURLToPath, URL } from 'node:url';
 import { SpotifyApi } from '@spotify/web-api-ts-sdk';
 import open from 'open';
 
@@ -419,7 +419,7 @@ export async function authorizeSpotify(): Promise<void> {
       }
     });
 
-    server.listen(Number.parseInt(port), '127.0.0.1', () => {
+    server.listen(Number.parseInt(port, 10), '127.0.0.1', () => {
       console.log(
         `Listening for Spotify authentication callback on port ${port}`,
       );
