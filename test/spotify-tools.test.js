@@ -448,3 +448,468 @@ for (const [name, args, url, method] of [
     assert.match(result.content[0].text, /404|NO_ACTIVE_DEVICE/);
   });
 }
+
+const P22 = 'P'.repeat(22);
+const S22 = 'S'.repeat(22);
+const ids = (n, from = 1) =>
+  Array.from({ length: n }, (_, i) => `t${from + i}`);
+const uris = (list) =>
+  encodeURIComponent(list.map((id) => `spotify:track:${id}`).join(','));
+const mkTrack = (n, artist = 'Artist A') => ({
+  id: `t${n}`,
+  name: `Track ${n}`,
+  type: 'track',
+  duration_ms: 180000,
+  artists: [{ name: artist }],
+  album: { name: 'Album X' },
+});
+const savedPage = (from, count, total, artist) => ({
+  total,
+  items: Array.from({ length: count }, (_, i) => ({
+    added_at: '2026-01-01T00:00:00Z',
+    track: mkTrack(from + i, artist),
+  })),
+});
+const run = async (t, http, name, args) => {
+  mockConfig(t);
+  mockHttp(t, http);
+  const client = await connect(t, { pin: '2026-07-28' });
+  return client.callTool({ name, arguments: args });
+};
+
+test('getAllSavedTracks paginates through the whole library in one call', async (t) => {
+  const result = await run(
+    t,
+    [
+      { url: 'me/tracks?limit=50&offset=0', response: savedPage(1, 50, 120) },
+      { url: 'me/tracks?limit=50&offset=50', response: savedPage(51, 50, 120) },
+      {
+        url: 'me/tracks?limit=50&offset=100',
+        response: savedPage(101, 20, 120),
+      },
+    ],
+    'getAllSavedTracks',
+    {},
+  );
+  const text = resultText(result);
+  assert.match(text, /120 of 120/);
+  assert.match(text, /Track 1 — Artist A \[t1\]/);
+  assert.match(text, /Track 120 — Artist A \[t120\]/);
+  assert.doesNotMatch(text, /next offset/i);
+});
+
+test('getAllSavedTracks stops at maxItems and reports the next offset', async (t) => {
+  const result = await run(
+    t,
+    [
+      { url: 'me/tracks?limit=50&offset=0', response: savedPage(1, 50, 120) },
+      { url: 'me/tracks?limit=50&offset=50', response: savedPage(51, 50, 120) },
+    ],
+    'getAllSavedTracks',
+    { maxItems: 60 },
+  );
+  const text = resultText(result);
+  assert.match(text, /60 of 120/);
+  assert.match(text, /Track 60 —/);
+  assert.doesNotMatch(text, /Track 61 —/);
+  assert.match(text, /next offset: 60/i);
+});
+
+test('getAllSavedTracks filters by query across title, artist and album', async (t) => {
+  const page = savedPage(1, 3, 3);
+  page.items[1].track.artists = [{ name: 'Alligatoah' }];
+  const result = await run(
+    t,
+    [{ url: 'me/tracks?limit=50&offset=0', response: page }],
+    'getAllSavedTracks',
+    { query: 'alligatoah' },
+  );
+  const text = resultText(result);
+  assert.match(text, /1 of 3/);
+  assert.match(text, /Track 2 — Alligatoah \[t2\]/);
+  assert.doesNotMatch(text, /Track 1 —/);
+});
+
+test('getAllSavedTracks can return only comma-separated IDs', async (t) => {
+  const result = await run(
+    t,
+    [{ url: 'me/tracks?limit=50&offset=0', response: savedPage(1, 3, 3) }],
+    'getAllSavedTracks',
+    { format: 'ids' },
+  );
+  const text = resultText(result);
+  assert.match(text, /t1,t2,t3/);
+  assert.doesNotMatch(text, /Track 1/);
+});
+
+test('getAllPlaylistTracks paginates and handles removed items and episodes', async (t) => {
+  const first = {
+    total: 70,
+    items: [
+      { item: mkTrack(1) },
+      { track: null },
+      ...ids(48, 3).map((id) => ({ item: mkTrack(Number(id.slice(1))) })),
+    ],
+  };
+  const second = {
+    total: 70,
+    items: [
+      {
+        item: {
+          id: 'ep1',
+          name: 'Episode One',
+          type: 'episode',
+          duration_ms: 60000,
+          description: '',
+          release_date: '2026-01-01',
+          show: { id: 's1', name: 'Show' },
+        },
+      },
+      ...ids(19, 52).map((id) => ({ item: mkTrack(Number(id.slice(1))) })),
+    ],
+  };
+  const result = await run(
+    t,
+    [
+      {
+        url: `playlists/${P22}/items?limit=50&offset=0&additional_types=track%2Cepisode`,
+        response: first,
+      },
+      {
+        url: `playlists/${P22}/items?limit=50&offset=50&additional_types=track%2Cepisode`,
+        response: second,
+      },
+    ],
+    'getAllPlaylistTracks',
+    { playlistId: P22 },
+  );
+  const text = resultText(result);
+  assert.match(text, /70 of 70/);
+  assert.match(text, /\[Removed track\]/);
+  assert.match(text, /Episode One/);
+  assert.match(text, /Track 70 — Artist A \[t70\]/);
+});
+
+test('getAllMyPlaylists paginates through all playlists', async (t) => {
+  const pl = (n) => ({
+    id: `p${n}`,
+    name: `Playlist ${n}`,
+    items: { total: n },
+  });
+  const result = await run(
+    t,
+    [
+      {
+        url: 'me/playlists?limit=50&offset=0',
+        response: {
+          total: 55,
+          items: Array.from({ length: 50 }, (_, i) => pl(i + 1)),
+        },
+      },
+      {
+        url: 'me/playlists?limit=50&offset=50',
+        response: {
+          total: 55,
+          items: Array.from({ length: 5 }, (_, i) => pl(i + 51)),
+        },
+      },
+    ],
+    'getAllMyPlaylists',
+    {},
+  );
+  const text = resultText(result);
+  assert.match(text, /55 of 55/);
+  assert.match(text, /Playlist 1 .*\[p1\]/);
+  assert.match(text, /Playlist 55 .*\[p55\]/);
+});
+
+test('saveTracksToLibrary splits large requests into chunks of 40', async (t) => {
+  const all = ids(41);
+  const result = await run(
+    t,
+    [
+      { url: `me/library?uris=${uris(all.slice(0, 40))}`, method: 'PUT' },
+      { url: `me/library?uris=${uris(all.slice(40))}`, method: 'PUT' },
+    ],
+    'saveTracksToLibrary',
+    { trackIds: all },
+  );
+  assert.match(resultText(result), /Successfully saved 41 tracks/);
+});
+
+test('removeUsersSavedTracks splits large requests into chunks of 40', async (t) => {
+  const all = ids(41);
+  const result = await run(
+    t,
+    [
+      { url: `me/library?uris=${uris(all.slice(0, 40))}`, method: 'DELETE' },
+      { url: `me/library?uris=${uris(all.slice(40))}`, method: 'DELETE' },
+    ],
+    'removeUsersSavedTracks',
+    { trackIds: all },
+  );
+  assert.match(resultText(result), /Successfully removed 41 tracks/);
+});
+
+test('checkUsersSavedTracks merges chunked results in order', async (t) => {
+  const all = ids(41);
+  const result = await run(
+    t,
+    [
+      {
+        url: `me/library/contains?uris=${uris(all.slice(0, 40))}`,
+        response: Array(40).fill(true),
+      },
+      {
+        url: `me/library/contains?uris=${uris(all.slice(40))}`,
+        response: [false],
+      },
+    ],
+    'checkUsersSavedTracks',
+    { trackIds: all },
+  );
+  const text = resultText(result);
+  assert.match(text, /t1: Saved/);
+  assert.match(text, /41\. t41: Not saved/);
+});
+
+test('bulk writes report partial progress when a later chunk fails', async (t) => {
+  const all = ids(41);
+  const result = await run(
+    t,
+    [
+      { url: `me/library?uris=${uris(all.slice(0, 40))}`, method: 'PUT' },
+      {
+        url: `me/library?uris=${uris(all.slice(40))}`,
+        method: 'PUT',
+        status: 500,
+        response: { error: { message: 'boom' } },
+      },
+    ],
+    'saveTracksToLibrary',
+    { trackIds: all },
+  );
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /40 of 41/);
+  assert.match(result.content[0].text, /500|boom/);
+});
+
+test('addTracksToPlaylist chunks by 100 and keeps the insert order', async (t) => {
+  const all = ids(101);
+  const asUris = (list) => list.map((id) => `spotify:track:${id}`);
+  const result = await run(
+    t,
+    [
+      {
+        url: 'playlists/p1/items',
+        method: 'POST',
+        body: { uris: asUris(all.slice(0, 100)), position: 5 },
+        response: { snapshot_id: 's1' },
+      },
+      {
+        url: 'playlists/p1/items',
+        method: 'POST',
+        body: { uris: asUris(all.slice(100)), position: 105 },
+        response: { snapshot_id: 's2' },
+      },
+    ],
+    'addTracksToPlaylist',
+    { playlistId: 'p1', trackIds: all, position: 5 },
+  );
+  assert.match(resultText(result), /Successfully added 101 items/);
+});
+
+test('removeTracksFromPlaylist chunks by 100 and only pins the snapshot on the first chunk', async (t) => {
+  const all = ids(101);
+  const items = (list) => list.map((id) => ({ uri: `spotify:track:${id}` }));
+  const result = await run(
+    t,
+    [
+      {
+        url: 'playlists/p1/items',
+        method: 'DELETE',
+        body: { items: items(all.slice(0, 100)), snapshot_id: 'snap' },
+        response: { snapshot_id: 's1' },
+      },
+      {
+        url: 'playlists/p1/items',
+        method: 'DELETE',
+        body: { items: items(all.slice(100)) },
+        response: { snapshot_id: 's2' },
+      },
+    ],
+    'removeTracksFromPlaylist',
+    { playlistId: 'p1', trackIds: all, snapshotId: 'snap' },
+  );
+  assert.match(resultText(result), /Successfully removed 101 tracks/);
+});
+
+const playlistsPage = (...playlists) => ({
+  url: 'me/playlists?limit=50&offset=0',
+  response: {
+    total: playlists.length,
+    items: playlists.map(([id, name]) => ({ id, name, items: { total: 1 } })),
+  },
+});
+const itemsPage = (id, trackIds) => ({
+  url: `playlists/${id}/items?limit=50&offset=0&additional_types=track%2Cepisode`,
+  response: {
+    total: trackIds.length,
+    items: trackIds.map((n) => ({ item: mkTrack(Number(n.slice(1))) })),
+  },
+});
+const likedThree = {
+  url: 'me/tracks?limit=50&offset=0',
+  response: savedPage(1, 3, 3),
+};
+const asItems = (list) => ({ uris: list.map((id) => `spotify:track:${id}`) });
+
+test('getAllPlaylistTracks resolves a playlist by name', async (t) => {
+  const result = await run(
+    t,
+    [
+      playlistsPage([P22, 'My Mix'], ['Q'.repeat(22), 'Other']),
+      itemsPage(P22, ['t1', 't2']),
+    ],
+    'getAllPlaylistTracks',
+    { playlistId: 'my mix' },
+  );
+  assert.match(resultText(result), /Track 2 — Artist A \[t2\]/);
+});
+
+test('playlist name resolution reports ambiguous and unknown names', async (t) => {
+  const ambiguous = await run(
+    t,
+    [
+      playlistsPage(
+        ['A'.repeat(22), 'Road Trip 1'],
+        ['B'.repeat(22), 'Road Trip 2'],
+      ),
+    ],
+    'getAllPlaylistTracks',
+    { playlistId: 'road trip' },
+  );
+  assert.equal(ambiguous.isError, true);
+  assert.match(ambiguous.content[0].text, /Road Trip 1[\s\S]*Road Trip 2/);
+});
+
+test('moveLikedSongsToPlaylist defaults to a dry run without any writes', async (t) => {
+  const result = await run(
+    t,
+    [likedThree, playlistsPage([S22, 'storage']), itemsPage(S22, ['t2'])],
+    'moveLikedSongsToPlaylist',
+    { toPlaylist: 'storage', all: true },
+  );
+  const text = resultText(result);
+  assert.match(text, /Dry run/);
+  assert.match(text, /3 liked songs/);
+  assert.match(text, /1 already there/);
+  assert.match(text, /2 to add/);
+});
+
+test('moveLikedSongsToPlaylist moves songs, skips duplicates and removes them from Liked Songs', async (t) => {
+  const result = await run(
+    t,
+    [
+      likedThree,
+      playlistsPage([S22, 'storage']),
+      itemsPage(S22, ['t2']),
+      {
+        url: `playlists/${S22}/items`,
+        method: 'POST',
+        body: asItems(['t1', 't3']),
+        response: { snapshot_id: 's1' },
+      },
+      { url: `me/library?uris=${uris(['t1', 't2', 't3'])}`, method: 'DELETE' },
+    ],
+    'moveLikedSongsToPlaylist',
+    { toPlaylist: 'storage', all: true, dryRun: false },
+  );
+  const text = resultText(result);
+  assert.match(text, /Moved 3 liked songs to "storage"/);
+  assert.match(text, /2 added, 1 already there/);
+  assert.match(text, /Removed 3 from Liked Songs/);
+});
+
+test('moveLikedSongsToPlaylist creates a missing playlist and can copy without removing', async (t) => {
+  const result = await run(
+    t,
+    [
+      likedThree,
+      playlistsPage(),
+      {
+        url: 'me/playlists',
+        method: 'POST',
+        body: { name: 'storage', public: false },
+        response: { id: S22 },
+      },
+      {
+        url: `playlists/${S22}/items`,
+        method: 'POST',
+        body: asItems(['t1', 't2', 't3']),
+        response: { snapshot_id: 's1' },
+      },
+    ],
+    'moveLikedSongsToPlaylist',
+    { toPlaylist: 'storage', all: true, dryRun: false, removeFromLiked: false },
+  );
+  const text = resultText(result);
+  assert.match(text, /Copied 3 liked songs to "storage"/);
+  assert.doesNotMatch(text, /Removed/);
+});
+
+test('moveLikedSongsToPlaylist filters by query and by added date', async (t) => {
+  const page = savedPage(1, 3, 3);
+  page.items[0].added_at = '2020-01-01T00:00:00Z';
+  page.items[1].track.artists = [{ name: 'Alligatoah' }];
+  const byQuery = await run(
+    t,
+    [{ url: 'me/tracks?limit=50&offset=0', response: page }, playlistsPage()],
+    'moveLikedSongsToPlaylist',
+    { toPlaylist: 'storage', query: 'alligatoah' },
+  );
+  assert.match(resultText(byQuery), /1 liked song\b/);
+});
+
+test('moveLikedSongsToPlaylist filters by addedBefore', async (t) => {
+  const page = savedPage(1, 3, 3);
+  page.items[0].added_at = '2020-01-01T00:00:00Z';
+  const result = await run(
+    t,
+    [{ url: 'me/tracks?limit=50&offset=0', response: page }, playlistsPage()],
+    'moveLikedSongsToPlaylist',
+    { toPlaylist: 'storage', addedBefore: '2021-01-01' },
+  );
+  assert.match(resultText(result), /1 liked song\b/);
+});
+
+test('moveLikedSongsToPlaylist does not touch Liked Songs when adding fails', async (t) => {
+  const result = await run(
+    t,
+    [
+      likedThree,
+      playlistsPage([S22, 'storage']),
+      itemsPage(S22, []),
+      {
+        url: `playlists/${S22}/items`,
+        method: 'POST',
+        body: asItems(['t1', 't2', 't3']),
+        status: 500,
+        response: { error: { message: 'boom' } },
+      },
+    ],
+    'moveLikedSongsToPlaylist',
+    { toPlaylist: 'storage', all: true, dryRun: false },
+  );
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /0 of 3/);
+  assert.match(result.content[0].text, /nothing was removed/i);
+});
+
+test('moveLikedSongsToPlaylist needs a selector or all=true', async (t) => {
+  const result = await run(t, [], 'moveLikedSongsToPlaylist', {
+    toPlaylist: 'storage',
+  });
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /all/i);
+});

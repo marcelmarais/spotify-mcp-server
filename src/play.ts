@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { MAX_BULK_IDS, partialFailure, processInChunks } from './paging.js';
 import { defineTool, toolError } from './tool.js';
 import type { SpotifyHandlerExtra } from './types.js';
 import { formatDuration, handleSpotifyRequest, spotifyFetch } from './utils.js';
@@ -298,8 +299,9 @@ const addTracksToPlaylist = defineTool({
     playlistId: z.string().describe('The Spotify ID of the playlist'),
     trackIds: z
       .array(z.string())
+      .max(MAX_BULK_IDS)
       .describe(
-        'Array of Spotify IDs or URIs to add. ' +
+        'Array of Spotify IDs or URIs to add (chunked automatically). ' +
           'Plain IDs are assumed to be tracks. ' +
           'To add podcast episodes, pass full URIs: spotify:episode:{id}.',
       ),
@@ -318,42 +320,44 @@ const addTracksToPlaylist = defineTool({
       };
     }
 
-    try {
-      const uris = trackIds.map((id) =>
-        id.startsWith('spotify:') ? id : `spotify:track:${id}`,
+    const uris = trackIds.map((id) =>
+      id.startsWith('spotify:') ? id : `spotify:track:${id}`,
+    );
+
+    // Hit /items directly: see spotifyFetch JSDoc for context.
+    // Spotify accepts at most 100 items per request; later chunks are
+    // inserted after the earlier ones so the given order is preserved.
+    const { processed, error } = await processInChunks(
+      uris,
+      100,
+      (part, start) =>
+        spotifyFetch(`playlists/${playlistId}/items`, {
+          method: 'POST',
+          body: {
+            uris: part,
+            ...(position !== undefined ? { position: position + start } : {}),
+          },
+        }),
+    );
+    if (error) {
+      return partialFailure(
+        'adding items to playlist',
+        processed,
+        uris.length,
+        error,
       );
-
-      // Hit /items directly: see spotifyFetch JSDoc for context.
-      await spotifyFetch(`playlists/${playlistId}/items`, {
-        method: 'POST',
-        body: {
-          uris,
-          ...(position !== undefined ? { position } : {}),
-        },
-      });
-
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Successfully added ${trackIds.length} item${
-              trackIds.length === 1 ? '' : 's'
-            } to playlist (ID: ${playlistId})`,
-          },
-        ],
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Error adding items to playlist: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          },
-        ],
-      };
     }
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Successfully added ${processed} item${
+            processed === 1 ? '' : 's'
+          } to playlist (ID: ${playlistId})`,
+        },
+      ],
+    };
   },
 });
 

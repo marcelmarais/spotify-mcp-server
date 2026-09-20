@@ -260,6 +260,33 @@ A lightweight [Model Context Protocol (MCP)](https://modelcontextprotocol.io) se
    - **Example**: `seekToPosition({ positionMs: 90000 })`
 
 
+### Bulk and Workflow Operations
+
+These tools do the paging, chunking and lookups for you, so a client does not have to call the single-page tools in a loop.
+
+1. **getAllSavedTracks** / **getAllPlaylistTracks** / **getAllMyPlaylists**
+
+   - **Description**: Return an entire list (Liked Songs, a playlist's tracks, your playlists) across all pages in one call
+   - **Parameters**:
+     - `playlistId` (string, `getAllPlaylistTracks` only): playlist by Spotify ID **or name** (case-insensitive)
+     - `query` (string, optional): only entries whose title, artist or album (playlist name for `getAllMyPlaylists`) contains this text
+     - `maxItems` (number, optional): default 500, max 10000; if more exist the result names the `offset` to continue from
+     - `offset` (number, optional): start position
+     - `format` (string, optional): `compact` (default, `Title — Artist [id]`) or `ids` (comma-separated IDs only, cheapest output)
+   - **Example**: `getAllSavedTracks({ query: "alligatoah" })`, `getAllSavedTracks({ maxItems: 10000, format: "ids" })`
+
+2. **moveLikedSongsToPlaylist**
+
+   - **Description**: Move (or copy) Liked Songs into a playlist in one step: select by filter, create the playlist if missing, add only songs that are not already in it, then remove them from the Liked Songs. Runs as a dry run unless `dryRun: false`.
+   - **Parameters**:
+     - `toPlaylist` (string): target playlist by name (created private if missing) or ID
+     - Selectors (at least one required): `all` (boolean), `query` (string), `trackIds` (array), `addedBefore` / `addedAfter` (ISO dates)
+     - `removeFromLiked` (boolean, optional): default `true` (move); `false` copies only
+     - `dryRun` (boolean, optional): default `true`
+   - **Example**: `moveLikedSongsToPlaylist({ toPlaylist: "storage", all: true, dryRun: false })`
+
+Large ID lists are accepted by `saveTracksToLibrary`, `removeUsersSavedTracks`, `checkUsersSavedTracks`, `addTracksToPlaylist` and `removeTracksFromPlaylist` (up to 5000 per call); they are split into Spotify-sized requests automatically and report partial progress if a later request fails.
+
 ### Album Operations
 
 1. **getAlbums**

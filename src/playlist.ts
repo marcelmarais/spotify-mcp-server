@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { MAX_BULK_IDS, partialFailure, processInChunks } from './paging.js';
 import { defineTool } from './tool.js';
 import type { SpotifyHandlerExtra } from './types.js';
 import { handleSpotifyRequest, spotifyFetch } from './utils.js';
@@ -143,61 +144,62 @@ const updatePlaylist = defineTool({
 const removeTracksFromPlaylist = defineTool({
   name: 'removeTracksFromPlaylist',
   description:
-    'Remove one or more tracks from a Spotify playlist (max 100 tracks per request)',
+    'Remove tracks from a Spotify playlist by ID or URI. Any number of IDs is fine, chunking is handled internally.',
   schema: {
     playlistId: z.string().describe('The Spotify ID of the playlist'),
     trackIds: z
       .array(z.string())
       .min(1)
-      .max(100)
-      .describe('Array of Spotify track IDs to remove (max 100)'),
+      .max(MAX_BULK_IDS)
+      .describe(
+        `Array of Spotify track IDs or URIs to remove (1-${MAX_BULK_IDS})`,
+      ),
     snapshotId: z
       .string()
       .optional()
       .describe(
-        'The playlist snapshot ID to target a specific version (optional)',
+        'The playlist snapshot ID to target a specific version (optional, applied to the first request only)',
       ),
   },
   handler: async (args, _extra: SpotifyHandlerExtra) => {
     const { playlistId, trackIds, snapshotId } = args;
+    const uris = trackIds.map((id) =>
+      id.startsWith('spotify:') ? id : `spotify:track:${id}`,
+    );
 
-    try {
-      const items = trackIds.map((id) => ({
-        uri: id.startsWith('spotify:') ? id : `spotify:track:${id}`,
-      }));
-
-      // Hit /items directly: SDK targets the deprecated /tracks endpoint
-      // (see spotifyFetch JSDoc for context on the March 2026 migration).
-      await spotifyFetch(`playlists/${playlistId}/items`, {
-        method: 'DELETE',
-        body: {
-          items,
-          ...(snapshotId ? { snapshot_id: snapshotId } : {}),
-        },
-      });
-
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Successfully removed ${trackIds.length} track${
-              trackIds.length === 1 ? '' : 's'
-            } from playlist (ID: ${playlistId})`,
+    // Hit /items directly: SDK targets the deprecated /tracks endpoint
+    // (see spotifyFetch JSDoc for context on the March 2026 migration).
+    const { processed, error } = await processInChunks(
+      uris,
+      100,
+      (part, start) =>
+        spotifyFetch(`playlists/${playlistId}/items`, {
+          method: 'DELETE',
+          body: {
+            items: part.map((uri) => ({ uri })),
+            ...(snapshotId && start === 0 ? { snapshot_id: snapshotId } : {}),
           },
-        ],
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Error removing tracks from playlist: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          },
-        ],
-      };
+        }),
+    );
+    if (error) {
+      return partialFailure(
+        'removing tracks from playlist',
+        processed,
+        uris.length,
+        error,
+      );
     }
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Successfully removed ${processed} track${
+            processed === 1 ? '' : 's'
+          } from playlist (ID: ${playlistId})`,
+        },
+      ],
+    };
   },
 });
 

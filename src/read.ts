@@ -11,13 +11,7 @@ import type {
   SpotifySimplifiedEpisode,
   SpotifyTrack,
 } from './types.js';
-import {
-  createSpotifyApi,
-  formatDuration,
-  handleSpotifyRequest,
-  loadSpotifyConfig,
-  spotifyFetch,
-} from './utils.js';
+import { formatDuration, handleSpotifyRequest, spotifyFetch } from './utils.js';
 
 function isTrack(item: any): item is SpotifyTrack {
   return (
@@ -706,69 +700,6 @@ const getAvailableDevices = defineTool({
   },
 });
 
-const removeUsersSavedTracks = defineTool({
-  name: 'removeUsersSavedTracks',
-  description:
-    'Remove one or more tracks from the user\'s "Liked Songs" library (max 40 per request)',
-  schema: {
-    trackIds: z
-      .array(z.string())
-      .max(40)
-      .describe('Array of Spotify track IDs to remove (max 40)'),
-  },
-  handler: async (args, _extra: SpotifyHandlerExtra) => {
-    const { trackIds } = args;
-
-    if (trackIds.length === 0) {
-      return {
-        content: [{ type: 'text', text: 'Error: No track IDs provided' }],
-      };
-    }
-
-    try {
-      // Ensure token is fresh (handles auto-refresh if needed)
-      await createSpotifyApi();
-      const config = loadSpotifyConfig();
-
-      const uris = trackIds.map((id) => `spotify:track:${id}`).join(',');
-      const response = await fetch(
-        `https://api.spotify.com/v1/me/library?uris=${encodeURIComponent(uris)}`,
-        {
-          method: 'DELETE',
-          headers: {
-            Authorization: `Bearer ${config.accessToken}`,
-          },
-        },
-      );
-
-      if (!response.ok) {
-        const errorData = await response.text();
-        throw new Error(`Spotify API error ${response.status}: ${errorData}`);
-      }
-
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Successfully removed ${trackIds.length} track${trackIds.length === 1 ? '' : 's'} from your Liked Songs`,
-          },
-        ],
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Error removing tracks from Liked Songs: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          },
-        ],
-      };
-    }
-  },
-});
-
 const TIME_RANGES = ['short_term', 'medium_term', 'long_term'] as const;
 type TimeRange = (typeof TIME_RANGES)[number];
 
@@ -901,7 +832,6 @@ export const readTools = [
   getPlaylistTracks,
   getRecentlyPlayed,
   getUsersSavedTracks,
-  removeUsersSavedTracks,
   getQueue,
   getAvailableDevices,
   getTopTracks,
