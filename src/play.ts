@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { MAX_BULK_IDS, partialFailure, processInChunks } from './paging.js';
+import { playlistIdFrom, playlistParam } from './resolve.js';
 import { defineTool, toolError } from './tool.js';
 import type { SpotifyHandlerExtra } from './types.js';
 import { formatDuration, handleSpotifyRequest, spotifyFetch } from './utils.js';
@@ -296,7 +297,7 @@ const addTracksToPlaylist = defineTool({
     'Add tracks or podcast episodes to a Spotify playlist. ' +
     'Accepts Spotify track IDs, episode IDs, or full Spotify URIs (e.g. spotify:episode:xxx).',
   schema: {
-    playlistId: z.string().describe('The Spotify ID of the playlist'),
+    playlistId: playlistParam,
     trackIds: z
       .array(z.string())
       .max(MAX_BULK_IDS)
@@ -312,7 +313,7 @@ const addTracksToPlaylist = defineTool({
       .describe('Position to insert the items (0-based index)'),
   },
   handler: async (args, _extra: SpotifyHandlerExtra) => {
-    const { playlistId, trackIds, position } = args;
+    const { playlistId: playlistRef, trackIds, position } = args;
 
     if (trackIds.length === 0) {
       return {
@@ -323,6 +324,12 @@ const addTracksToPlaylist = defineTool({
     const uris = trackIds.map((id) =>
       id.startsWith('spotify:') ? id : `spotify:track:${id}`,
     );
+    let playlistId: string;
+    try {
+      playlistId = await playlistIdFrom(playlistRef);
+    } catch (error) {
+      return toolError('adding items to playlist', error);
+    }
 
     // Hit /items directly: see spotifyFetch JSDoc for context.
     // Spotify accepts at most 100 items per request; later chunks are

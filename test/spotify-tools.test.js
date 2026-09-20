@@ -54,7 +54,11 @@ const cases = [
         response: {
           total: 8,
           items: [
-            { id: 'playlist1', name: 'Test Playlist', items: { total: 12 } },
+            {
+              id: 'LLLLLLLLLLLLLLLLLLLLLL',
+              name: 'Test Playlist',
+              items: { total: 12 },
+            },
           ],
         },
       },
@@ -63,10 +67,10 @@ const cases = [
   },
   {
     name: 'getPlaylistTracks',
-    args: { playlistId: 'playlist1', limit: 2, offset: 1 },
+    args: { playlistId: 'LLLLLLLLLLLLLLLLLLLLLL', limit: 2, offset: 1 },
     http: [
       {
-        url: 'playlists/playlist1/items?limit=2&offset=1&additional_types=track%2Cepisode',
+        url: 'playlists/LLLLLLLLLLLLLLLLLLLLLL/items?limit=2&offset=1&additional_types=track%2Cepisode',
         response: { total: 3, items: [{ item: track }, { track: null }] },
       },
     ],
@@ -160,9 +164,9 @@ const cases = [
         method: 'POST',
         body: { name: 'New Playlist', public: false },
         response: {
-          id: 'playlist1',
+          id: 'LLLLLLLLLLLLLLLLLLLLLL',
           external_urls: {
-            spotify: 'https://open.spotify.com/playlist/playlist1',
+            spotify: 'https://open.spotify.com/playlist/LLLLLLLLLLLLLLLLLLLLLL',
           },
         },
       },
@@ -172,13 +176,13 @@ const cases = [
   {
     name: 'addTracksToPlaylist',
     args: {
-      playlistId: 'playlist1',
+      playlistId: 'LLLLLLLLLLLLLLLLLLLLLL',
       trackIds: ['track1', 'spotify:episode:episode1'],
       position: 0,
     },
     http: [
       {
-        url: 'playlists/playlist1/items',
+        url: 'playlists/LLLLLLLLLLLLLLLLLLLLLL/items',
         method: 'POST',
         body: {
           uris: ['spotify:track:track1', 'spotify:episode:episode1'],
@@ -256,12 +260,12 @@ const cases = [
   },
   {
     name: 'getPlaylist',
-    args: { playlistId: 'playlist1' },
+    args: { playlistId: 'LLLLLLLLLLLLLLLLLLLLLL' },
     http: [
       {
-        url: 'playlists/playlist1',
+        url: 'playlists/LLLLLLLLLLLLLLLLLLLLLL',
         response: {
-          id: 'playlist1',
+          id: 'LLLLLLLLLLLLLLLLLLLLLL',
           name: 'Test Playlist',
           owner: { display_name: 'Test User' },
           tracks: { total: 3 },
@@ -272,10 +276,14 @@ const cases = [
   },
   {
     name: 'updatePlaylist',
-    args: { playlistId: 'playlist1', name: 'Renamed', public: false },
+    args: {
+      playlistId: 'LLLLLLLLLLLLLLLLLLLLLL',
+      name: 'Renamed',
+      public: false,
+    },
     http: [
       {
-        url: 'playlists/playlist1',
+        url: 'playlists/LLLLLLLLLLLLLLLLLLLLLL',
         method: 'PUT',
         body: { name: 'Renamed', public: false },
       },
@@ -285,13 +293,13 @@ const cases = [
   {
     name: 'removeTracksFromPlaylist',
     args: {
-      playlistId: 'playlist1',
+      playlistId: 'LLLLLLLLLLLLLLLLLLLLLL',
       trackIds: ['track1'],
       snapshotId: 'snapshot1',
     },
     http: [
       {
-        url: 'playlists/playlist1/items',
+        url: 'playlists/LLLLLLLLLLLLLLLLLLLLLL/items',
         method: 'DELETE',
         body: {
           items: [{ uri: 'spotify:track:track1' }],
@@ -303,10 +311,14 @@ const cases = [
   },
   {
     name: 'reorderPlaylistItems',
-    args: { playlistId: 'playlist1', rangeStart: 2, insertBefore: 0 },
+    args: {
+      playlistId: 'LLLLLLLLLLLLLLLLLLLLLL',
+      rangeStart: 2,
+      insertBefore: 0,
+    },
     http: [
       {
-        url: 'playlists/playlist1/items',
+        url: 'playlists/LLLLLLLLLLLLLLLLLLLLLL/items',
         method: 'PUT',
         body: { range_start: 2, insert_before: 0 },
       },
@@ -315,8 +327,10 @@ const cases = [
   },
   {
     name: 'unfollowPlaylist',
-    args: { playlistId: 'playlist1' },
-    http: [{ url: 'playlists/playlist1/followers', method: 'DELETE' }],
+    args: { playlistId: 'LLLLLLLLLLLLLLLLLLLLLL' },
+    http: [
+      { url: 'playlists/LLLLLLLLLLLLLLLLLLLLLL/followers', method: 'DELETE' },
+    ],
     text: /Successfully unfollowed/,
   },
   {
@@ -703,20 +717,20 @@ test('addTracksToPlaylist chunks by 100 and keeps the insert order', async (t) =
     t,
     [
       {
-        url: 'playlists/p1/items',
+        url: `playlists/${P22}/items`,
         method: 'POST',
         body: { uris: asUris(all.slice(0, 100)), position: 5 },
         response: { snapshot_id: 's1' },
       },
       {
-        url: 'playlists/p1/items',
+        url: `playlists/${P22}/items`,
         method: 'POST',
         body: { uris: asUris(all.slice(100)), position: 105 },
         response: { snapshot_id: 's2' },
       },
     ],
     'addTracksToPlaylist',
-    { playlistId: 'p1', trackIds: all, position: 5 },
+    { playlistId: P22, trackIds: all, position: 5 },
   );
   assert.match(resultText(result), /Successfully added 101 items/);
 });
@@ -728,20 +742,20 @@ test('removeTracksFromPlaylist chunks by 100 and only pins the snapshot on the f
     t,
     [
       {
-        url: 'playlists/p1/items',
+        url: `playlists/${P22}/items`,
         method: 'DELETE',
         body: { items: items(all.slice(0, 100)), snapshot_id: 'snap' },
         response: { snapshot_id: 's1' },
       },
       {
-        url: 'playlists/p1/items',
+        url: `playlists/${P22}/items`,
         method: 'DELETE',
         body: { items: items(all.slice(100)) },
         response: { snapshot_id: 's2' },
       },
     ],
     'removeTracksFromPlaylist',
-    { playlistId: 'p1', trackIds: all, snapshotId: 'snap' },
+    { playlistId: P22, trackIds: all, snapshotId: 'snap' },
   );
   assert.match(resultText(result), /Successfully removed 101 tracks/);
 });
@@ -1043,3 +1057,78 @@ test('getPlaylist reads the track count from items as well as tracks', async (t)
   );
   assert.match(resultText(result), /New Shape[\s\S]*7/);
 });
+
+for (const [name, args, http, text] of [
+  ['getPlaylistTracks', {}, [itemsPage(S22, ['t1'])], /Test Track|Track 1/],
+  [
+    'getPlaylist',
+    {},
+    [
+      {
+        url: `playlists/${S22}`,
+        response: { id: S22, name: 'storage', owner: {}, tracks: { total: 1 } },
+      },
+    ],
+    /storage/,
+  ],
+  [
+    'updatePlaylist',
+    { name: 'Renamed' },
+    [{ url: `playlists/${S22}`, method: 'PUT', body: { name: 'Renamed' } }],
+    /Successfully updated/,
+  ],
+  [
+    'addTracksToPlaylist',
+    { trackIds: ['t1'] },
+    [
+      {
+        url: `playlists/${S22}/items`,
+        method: 'POST',
+        body: asItems(['t1']),
+        response: { snapshot_id: 's' },
+      },
+    ],
+    /Successfully added 1 item/,
+  ],
+  [
+    'removeTracksFromPlaylist',
+    { trackIds: ['t1'] },
+    [
+      {
+        url: `playlists/${S22}/items`,
+        method: 'DELETE',
+        body: { items: [{ uri: 'spotify:track:t1' }] },
+        response: { snapshot_id: 's' },
+      },
+    ],
+    /Successfully removed 1 track/,
+  ],
+  [
+    'reorderPlaylistItems',
+    { rangeStart: 2, insertBefore: 0 },
+    [
+      {
+        url: `playlists/${S22}/items`,
+        method: 'PUT',
+        body: { range_start: 2, insert_before: 0 },
+      },
+    ],
+    /Successfully moved 1 track/,
+  ],
+  [
+    'unfollowPlaylist',
+    {},
+    [{ url: `playlists/${S22}/followers`, method: 'DELETE' }],
+    /Successfully unfollowed/,
+  ],
+]) {
+  test(`${name} accepts a playlist name instead of an ID`, async (t) => {
+    const result = await run(
+      t,
+      [playlistsPage([S22, 'storage']), ...http],
+      name,
+      { playlistId: 'storage', ...args },
+    );
+    assert.match(resultText(result), text);
+  });
+}

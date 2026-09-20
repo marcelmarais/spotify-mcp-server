@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { collectPages } from './paging.js';
 import { spotifyFetch } from './utils.js';
 
@@ -47,3 +48,16 @@ export async function resolvePlaylist(
   if (exact || options.exactOnly) return exact;
   return pick(all.filter((p) => p.name.toLowerCase().includes(wanted)));
 }
+
+/** Like resolvePlaylist, but throws when no playlist matches. Returns the playlist ID. */
+export async function playlistIdFrom(nameOrId: string): Promise<string> {
+  const playlist = await resolvePlaylist(nameOrId);
+  if (!playlist) {
+    throw new Error(`No playlist matching "${nameOrId}" found`);
+  }
+  return playlist.id;
+}
+
+export const playlistParam = z
+  .string()
+  .describe('The playlist, by Spotify ID or by name (case-insensitive)');

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { collectPages } from './paging.js';
-import { resolvePlaylist } from './resolve.js';
+import { playlistIdFrom, playlistParam } from './resolve.js';
 import { defineTool, toolError } from './tool.js';
 import type {
   SpotifyEpisode,
@@ -127,9 +127,7 @@ const getAllPlaylistTracks = defineTool({
   description:
     'Get all tracks and episodes of a playlist across all pages in a single call, optionally filtered by text. Prefer this over paging getPlaylistTracks by hand.',
   schema: {
-    playlistId: z
-      .string()
-      .describe('The playlist, by Spotify ID or by name (case-insensitive)'),
+    playlistId: playlistParam,
     ...listSchema,
   },
   handler: async (args, _extra: SpotifyHandlerExtra) => {
@@ -139,13 +137,10 @@ const getAllPlaylistTracks = defineTool({
       track?: SpotifyTrack | SpotifyEpisode | null;
     };
     try {
-      const playlist = await resolvePlaylist(playlistId);
-      if (!playlist) {
-        throw new Error(`No playlist matching "${playlistId}" found`);
-      }
+      const playlistIdResolved = await playlistIdFrom(playlistId);
       const { results, total, nextOffset } = await collectPages<Row, Entry>({
         fetchPage: (o, limit) =>
-          spotifyFetch(`playlists/${playlist.id}/items`, {
+          spotifyFetch(`playlists/${playlistIdResolved}/items`, {
             query: { limit, offset: o, additional_types: 'track,episode' },
           }),
         select: (row) => {

@@ -1,5 +1,6 @@
 import type { MaxInt } from '@spotify/web-api-ts-sdk';
 import { z } from 'zod';
+import { playlistIdFrom, playlistParam } from './resolve.js';
 import { defineTool } from './tool.js';
 import type {
   SpotifyEpisode,
@@ -359,7 +360,7 @@ const getPlaylistTracks = defineTool({
   name: 'getPlaylistTracks',
   description: 'Get a list of tracks in a Spotify playlist',
   schema: {
-    playlistId: z.string().describe('The Spotify ID of the playlist'),
+    playlistId: playlistParam,
     limit: z
       .number()
       .min(1)
@@ -373,7 +374,8 @@ const getPlaylistTracks = defineTool({
       .describe('Offset for pagination (0-based index)'),
   },
   handler: async (args, _extra: SpotifyHandlerExtra) => {
-    const { playlistId, limit = 50, offset = 0 } = args;
+    const { playlistId: playlistRef, limit = 50, offset = 0 } = args;
+    const playlistId = await playlistIdFrom(playlistRef);
 
     // Hit /items directly: see spotifyFetch JSDoc for context.
     // Response wraps each entry's track under `item` (new) or `track` (legacy).
