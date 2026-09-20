@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import { defineTool } from './tool.js';
+import { defineTool, toolError } from './tool.js';
 import type { SpotifyHandlerExtra } from './types.js';
-import { handleSpotifyRequest, spotifyFetch } from './utils.js';
+import { formatDuration, handleSpotifyRequest, spotifyFetch } from './utils.js';
 
 /**
  * Ensures there is an active Spotify device before attempting playback.
@@ -577,6 +577,123 @@ const adjustVolume = defineTool({
   },
 });
 
+const deviceIdSchema = z
+  .string()
+  .optional()
+  .describe('The Spotify device ID to target (defaults to the active device)');
+
+const setShuffle = defineTool({
+  name: 'setShuffle',
+  description:
+    'Turn shuffle on or off for the current playback. Smart Shuffle is not available via the Spotify Web API. Requires Spotify Premium.',
+  schema: {
+    state: z.boolean().describe('true to enable shuffle, false to disable'),
+    deviceId: deviceIdSchema,
+  },
+  handler: async (args, _extra: SpotifyHandlerExtra) => {
+    const { state, deviceId } = args;
+    try {
+      await spotifyFetch('me/player/shuffle', {
+        method: 'PUT',
+        query: { state: String(state), device_id: deviceId },
+      });
+      return {
+        content: [
+          { type: 'text', text: `Shuffle turned ${state ? 'on' : 'off'}` },
+        ],
+      };
+    } catch (error) {
+      return toolError('setting shuffle', error);
+    }
+  },
+});
+
+const setRepeat = defineTool({
+  name: 'setRepeat',
+  description:
+    'Set the repeat mode: "off", "context" (repeat current playlist/album) or "track" (repeat current track). Requires Spotify Premium.',
+  schema: {
+    state: z.enum(['off', 'context', 'track']).describe('The repeat mode'),
+    deviceId: deviceIdSchema,
+  },
+  handler: async (args, _extra: SpotifyHandlerExtra) => {
+    const { state, deviceId } = args;
+    try {
+      await spotifyFetch('me/player/repeat', {
+        method: 'PUT',
+        query: { state, device_id: deviceId },
+      });
+      return {
+        content: [{ type: 'text', text: `Repeat mode set to ${state}` }],
+      };
+    } catch (error) {
+      return toolError('setting repeat mode', error);
+    }
+  },
+});
+
+const transferPlayback = defineTool({
+  name: 'transferPlayback',
+  description:
+    'Transfer playback to another device (IDs from getAvailableDevices). Requires Spotify Premium.',
+  schema: {
+    deviceId: z
+      .string()
+      .describe('The Spotify device ID to transfer playback to'),
+    play: z
+      .boolean()
+      .optional()
+      .describe(
+        'true to start playing on the new device, false/omitted keeps the current play state',
+      ),
+  },
+  handler: async (args, _extra: SpotifyHandlerExtra) => {
+    const { deviceId, play } = args;
+    try {
+      await spotifyFetch('me/player', {
+        method: 'PUT',
+        body: {
+          device_ids: [deviceId],
+          ...(play !== undefined ? { play } : {}),
+        },
+      });
+      return {
+        content: [
+          { type: 'text', text: `Transferred playback to ${deviceId}` },
+        ],
+      };
+    } catch (error) {
+      return toolError('transferring playback', error);
+    }
+  },
+});
+
+const seekToPosition = defineTool({
+  name: 'seekToPosition',
+  description:
+    'Seek to a position in the currently playing track, in milliseconds. Requires Spotify Premium.',
+  schema: {
+    positionMs: z.number().int().min(0).describe('Position in milliseconds'),
+    deviceId: deviceIdSchema,
+  },
+  handler: async (args, _extra: SpotifyHandlerExtra) => {
+    const { positionMs, deviceId } = args;
+    try {
+      await spotifyFetch('me/player/seek', {
+        method: 'PUT',
+        query: { position_ms: positionMs, device_id: deviceId },
+      });
+      return {
+        content: [
+          { type: 'text', text: `Seeked to ${formatDuration(positionMs)}` },
+        ],
+      };
+    } catch (error) {
+      return toolError('seeking', error);
+    }
+  },
+});
+
 export const playTools = [
   playMusic,
   pausePlayback,
@@ -588,4 +705,8 @@ export const playTools = [
   addToQueue,
   setVolume,
   adjustVolume,
+  setShuffle,
+  setRepeat,
+  transferPlayback,
+  seekToPosition,
 ];

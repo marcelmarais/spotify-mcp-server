@@ -38,6 +38,12 @@ export const toolNames = [
   'removeTracksFromPlaylist',
   'reorderPlaylistItems',
   'unfollowPlaylist',
+  'saveTracksToLibrary',
+  'checkUsersSavedTracks',
+  'setShuffle',
+  'setRepeat',
+  'transferPlayback',
+  'seekToPosition',
 ].sort();
 
 for (const mode of ['legacy', { pin: '2026-07-28' }]) {
@@ -67,6 +73,14 @@ for (const mode of ['legacy', { pin: '2026-07-28' }]) {
       ['setVolume', { volumePercent: 101 }],
       ['getAlbums', { albumIds: Array(21).fill('album') }],
       ['removeUsersSavedTracks', { trackIds: Array(41).fill('track') }],
+      ['saveTracksToLibrary', { trackIds: Array(41).fill('track') }],
+      ['saveTracksToLibrary', { trackIds: [] }],
+      ['checkUsersSavedTracks', { trackIds: Array(41).fill('track') }],
+      ['checkUsersSavedTracks', { trackIds: [] }],
+      ['setShuffle', {}],
+      ['setRepeat', { state: 'invalid' }],
+      ['transferPlayback', {}],
+      ['seekToPosition', { positionMs: -1 }],
     ]) {
       const result = await client.request({
         method: 'tools/call',

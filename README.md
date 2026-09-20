@@ -112,6 +112,23 @@ A lightweight [Model Context Protocol (MCP)](https://modelcontextprotocol.io) se
    - **Example**: `removeUsersSavedTracks({ trackIds: ["4iV5W9uYEdYUVa79Axb7Rh", "1301WleyT98MSxVHPZCA6M"] })`
 
 
+10. **saveTracksToLibrary**
+
+   - **Description**: Save one or more tracks to the user's "Liked Songs" library (max 40 per request)
+   - **Parameters**:
+     - `trackIds` (array): Array of Spotify track IDs to save (1-40)
+   - **Returns**: Success confirmation message
+   - **Example**: `saveTracksToLibrary({ trackIds: ["4iV5W9uYEdYUVa79Axb7Rh"] })`
+
+11. **checkUsersSavedTracks**
+
+   - **Description**: Check whether tracks are saved in the user's "Liked Songs" library (max 40 per request)
+   - **Parameters**:
+     - `trackIds` (array): Array of Spotify track IDs to check (1-40)
+   - **Returns**: Per track "Saved" / "Not saved"
+   - **Example**: `checkUsersSavedTracks({ trackIds: ["4iV5W9uYEdYUVa79Axb7Rh", "1301WleyT98MSxVHPZCA6M"] })`
+
+
 ### Play / Create Operations
 
 1. **playMusic**
@@ -208,6 +225,39 @@ A lightweight [Model Context Protocol (MCP)](https://modelcontextprotocol.io) se
    - **Returns**: Success status showing the volume change (e.g., "Volume increased from 50% to 60%")
    - **Example**: `adjustVolume({ adjustment: 10 })` (increase by 10%)
    - **Example**: `adjustVolume({ adjustment: -20 })` (decrease by 20%)
+
+
+11. **setShuffle**
+
+   - **Description**: Turn shuffle on or off (requires Spotify Premium; Smart Shuffle is not available via the Web API)
+   - **Parameters**:
+     - `state` (boolean): true to enable, false to disable
+     - `deviceId` (string, optional): ID of the target device
+   - **Example**: `setShuffle({ state: true })`
+
+12. **setRepeat**
+
+   - **Description**: Set the repeat mode (requires Spotify Premium)
+   - **Parameters**:
+     - `state` (string): `off`, `context` (playlist/album) or `track`
+     - `deviceId` (string, optional): ID of the target device
+   - **Example**: `setRepeat({ state: "context" })`
+
+13. **transferPlayback**
+
+   - **Description**: Transfer playback to another device (requires Spotify Premium)
+   - **Parameters**:
+     - `deviceId` (string): ID of the device to transfer playback to (from `getAvailableDevices`)
+     - `play` (boolean, optional): true to start playing on the new device
+   - **Example**: `transferPlayback({ deviceId: "abc123", play: true })`
+
+14. **seekToPosition**
+
+   - **Description**: Seek to a position in the currently playing track (requires Spotify Premium)
+   - **Parameters**:
+     - `positionMs` (number): Position in milliseconds
+     - `deviceId` (string, optional): ID of the target device
+   - **Example**: `seekToPosition({ positionMs: 90000 })`
 
 
 ### Album Operations

@@ -317,6 +317,68 @@ const cases = [
     http: [{ url: 'playlists/playlist1/followers', method: 'DELETE' }],
     text: /Successfully unfollowed/,
   },
+  {
+    name: 'saveTracksToLibrary',
+    args: { trackIds: ['track1', 'track2'] },
+    http: [
+      {
+        url: 'me/library?uris=spotify%3Atrack%3Atrack1%2Cspotify%3Atrack%3Atrack2',
+        method: 'PUT',
+      },
+    ],
+    text: /Successfully saved 2 tracks/,
+  },
+  {
+    name: 'checkUsersSavedTracks',
+    args: { trackIds: ['track1', 'track2'] },
+    http: [
+      {
+        url: 'me/library/contains?uris=spotify%3Atrack%3Atrack1%2Cspotify%3Atrack%3Atrack2',
+        response: [true, false],
+      },
+    ],
+    text: /track1: Saved[\s\S]*track2: Not saved/,
+  },
+  {
+    name: 'setShuffle',
+    args: { state: true, deviceId: 'device1' },
+    http: [
+      {
+        url: 'me/player/shuffle?state=true&device_id=device1',
+        method: 'PUT',
+      },
+    ],
+    text: /Shuffle.*on/i,
+  },
+  {
+    name: 'setRepeat',
+    args: { state: 'track' },
+    http: [{ url: 'me/player/repeat?state=track', method: 'PUT' }],
+    text: /Repeat.*track/i,
+  },
+  {
+    name: 'transferPlayback',
+    args: { deviceId: 'device1', play: true },
+    http: [
+      {
+        url: 'me/player',
+        method: 'PUT',
+        body: { device_ids: ['device1'], play: true },
+      },
+    ],
+    text: /Transferred playback to device1/,
+  },
+  {
+    name: 'seekToPosition',
+    args: { positionMs: 90000, deviceId: 'device1' },
+    http: [
+      {
+        url: 'me/player/seek?position_ms=90000&device_id=device1',
+        method: 'PUT',
+      },
+    ],
+    text: /1:30/,
+  },
 ];
 
 for (const mode of ['legacy', { pin: '2026-07-28' }]) {
@@ -351,3 +413,38 @@ test('Spotify HTTP failures become MCP tool errors', async (t) => {
   assert.equal(result.isError, true);
   assert.match(result.content[0].text, /403|Forbidden/);
 });
+
+for (const [name, args, url, method] of [
+  [
+    'saveTracksToLibrary',
+    { trackIds: ['track1'] },
+    'me/library?uris=spotify%3Atrack%3Atrack1',
+    'PUT',
+  ],
+  [
+    'checkUsersSavedTracks',
+    { trackIds: ['track1'] },
+    'me/library/contains?uris=spotify%3Atrack%3Atrack1',
+    'GET',
+  ],
+  ['setShuffle', { state: false }, 'me/player/shuffle?state=false', 'PUT'],
+  ['setRepeat', { state: 'off' }, 'me/player/repeat?state=off', 'PUT'],
+  ['transferPlayback', { deviceId: 'device1' }, 'me/player', 'PUT'],
+  ['seekToPosition', { positionMs: 0 }, 'me/player/seek?position_ms=0', 'PUT'],
+]) {
+  test(`${name} reports Spotify failures as MCP tool errors`, async (t) => {
+    mockConfig(t);
+    mockHttp(t, [
+      {
+        url,
+        method,
+        status: 404,
+        response: { error: { message: 'NO_ACTIVE_DEVICE' } },
+      },
+    ]);
+    const client = await connect(t, { pin: '2026-07-28' });
+    const result = await client.callTool({ name, arguments: args });
+    assert.equal(result.isError, true, JSON.stringify(result));
+    assert.match(result.content[0].text, /404|NO_ACTIVE_DEVICE/);
+  });
+}
