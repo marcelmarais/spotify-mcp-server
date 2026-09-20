@@ -285,6 +285,38 @@ These tools do the paging, chunking and lookups for you, so a client does not ha
      - `dryRun` (boolean, optional): default `true`
    - **Example**: `moveLikedSongsToPlaylist({ toPlaylist: "storage", all: true, dryRun: false })`
 
+3. **findDuplicateTracks**
+
+   - **Description**: Find duplicate songs in the Liked Songs or a playlist; the oldest entry is kept, the rest are listed as extras. With `action: "remove"` the extras are removed (repeated copies of the very same track ID cannot be removed individually and are only reported).
+   - **Parameters**:
+     - `source` (string): `liked` for the Liked Songs, or a playlist by ID or name
+     - `match` (string, optional): `strict` (default, same title and artist) or `similar` (also merges remasters, radio edits and remixes with the same base title)
+     - `action` (string, optional): `report` (default) or `remove`
+     - `maxGroups` (number, optional): groups to list (default 50)
+   - **Example**: `findDuplicateTracks({ source: "liked" })`, `findDuplicateTracks({ source: "storage", action: "remove" })`
+
+4. **comparePlaylists**
+
+   - **Description**: Compare two collections (Liked Songs and/or playlists): only in A, only in B, in both
+   - **Parameters**: `a`, `b` (`liked` or playlist ID/name), `by` (`id` default or `title-artist`), `maxItems` (per section, default 100), `format` (`compact` or `ids`)
+   - **Example**: `comparePlaylists({ a: "liked", b: "storage" })`
+
+5. **getLibraryOverview**
+
+   - **Description**: One-call summary: number of Liked Songs and playlists, total length, top artists, songs liked per year, oldest and newest likes, estimate of duplicates
+   - **Parameters**: `topArtists` (number, optional, default 15)
+   - **Example**: `getLibraryOverview()`
+
+6. **createPlaylistFromQueries**
+
+   - **Description**: Build a playlist from plain-text descriptions such as `Artist - Title`. Each line is searched on Spotify and only confident matches are used; uncertain and missing lines are reported instead of being added. Creates the playlist, or extends an existing one with the same name (skipping songs already in it).
+   - **Parameters**: `name`, `queries` (array), `description` (optional), `public` (optional, default false), `dryRun` (optional, only search and report)
+   - **Example**: `createPlaylistFromQueries({ name: "Road Trip", queries: ["Wheatus - Teenage Dirtbag", "Alligatoah - Willst du"] })`
+
+All playlist tools accept a playlist **name** wherever they take a `playlistId` (case-insensitive, unique partial matches allowed; ambiguous names produce an error that lists the candidates).
+
+Requests that hit Spotify's rate limit (HTTP 429) are retried automatically (honouring `Retry-After`), and so are transient 502/503/504 errors on requests that are safe to repeat. Long lists are fetched with a few pages in parallel.
+
 Large ID lists are accepted by `saveTracksToLibrary`, `removeUsersSavedTracks`, `checkUsersSavedTracks`, `addTracksToPlaylist` and `removeTracksFromPlaylist` (up to 5000 per call); they are split into Spotify-sized requests automatically and report partial progress if a later request fails.
 
 ### Album Operations

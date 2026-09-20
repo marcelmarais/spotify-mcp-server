@@ -1132,3 +1132,272 @@ for (const [name, args, http, text] of [
     assert.match(resultText(result), text);
   });
 }
+
+const likedRow = (n, artist, added, name) => ({
+  added_at: added,
+  track: { ...mkTrack(n, artist), ...(name ? { name } : {}) },
+});
+const dupLiked = {
+  url: 'me/tracks?limit=50&offset=0',
+  response: {
+    total: 3,
+    items: [
+      likedRow(1, 'Wheatus', '2024-01-01T00:00:00Z', 'Teenage Dirtbag'),
+      likedRow(
+        2,
+        'Wheatus',
+        '2023-01-01T00:00:00Z',
+        'Teenage Dirtbag - Radio Edit',
+      ),
+      likedRow(3, 'Other', '2022-01-01T00:00:00Z'),
+    ],
+  },
+};
+
+test('findDuplicateTracks reports near-duplicates and keeps the oldest like', async (t) => {
+  const result = await run(t, [dupLiked], 'findDuplicateTracks', {
+    source: 'liked',
+    match: 'similar',
+  });
+  const text = resultText(result);
+  assert.match(text, /1 duplicate group/);
+  assert.match(text, /KEEP.*\[t2\]/);
+  assert.match(text, /EXTRA.*\[t1\]/);
+  assert.doesNotMatch(text, /\[t3\]/);
+});
+
+test('findDuplicateTracks removes the extras from Liked Songs on request', async (t) => {
+  const result = await run(
+    t,
+    [dupLiked, { url: `me/library?uris=${uris(['t1'])}`, method: 'DELETE' }],
+    'findDuplicateTracks',
+    { source: 'liked', action: 'remove', match: 'similar' },
+  );
+  assert.match(resultText(result), /Removed 1 duplicate/);
+});
+
+test('findDuplicateTracks handles playlists and never removes a repeated ID blindly', async (t) => {
+  const rows = [
+    { item: mkTrack(1) },
+    { item: mkTrack(1) },
+    { item: { ...mkTrack(3), name: 'Song' } },
+    { item: { ...mkTrack(4), name: 'Song (Remastered)' } },
+  ];
+  const result = await run(
+    t,
+    [
+      playlistsPage([S22, 'storage']),
+      {
+        url: `playlists/${S22}/items?limit=50&offset=0&additional_types=track%2Cepisode`,
+        response: { total: 4, items: rows },
+      },
+      {
+        url: `playlists/${S22}/items`,
+        method: 'DELETE',
+        body: { items: [{ uri: 'spotify:track:t4' }] },
+        response: { snapshot_id: 's' },
+      },
+    ],
+    'findDuplicateTracks',
+    { source: 'storage', action: 'remove', match: 'similar' },
+  );
+  const text = resultText(result);
+  assert.match(text, /Removed 1 duplicate/);
+  assert.match(text, /repeated.*t1/is);
+});
+
+test('comparePlaylists shows what is only in A, only in B and common', async (t) => {
+  const result = await run(
+    t,
+    [
+      likedThree,
+      playlistsPage([S22, 'storage']),
+      itemsPage(S22, ['t2', 't3', 't4']),
+    ],
+    'comparePlaylists',
+    { a: 'liked', b: 'storage' },
+  );
+  const text = resultText(result);
+  assert.match(text, /Only in liked \(1\)[\s\S]*Track 1 — Artist A \[t1\]/);
+  assert.match(text, /Only in storage \(1\)[\s\S]*Track 4 — Artist A \[t4\]/);
+  assert.match(text, /In both \(2\)/);
+});
+
+test('getLibraryOverview summarises the Liked Songs', async (t) => {
+  const page = savedPage(1, 3, 3);
+  page.items[2].track.artists = [{ name: 'Artist B' }];
+  page.items[2].added_at = '2020-05-05T00:00:00Z';
+  const result = await run(
+    t,
+    [
+      { url: 'me/tracks?limit=50&offset=0', response: page },
+      {
+        url: 'me/playlists?limit=1&offset=0',
+        response: { total: 12, items: [] },
+      },
+    ],
+    'getLibraryOverview',
+    {},
+  );
+  const text = resultText(result);
+  assert.match(text, /Liked Songs: 3/);
+  assert.match(text, /Playlists: 12/);
+  assert.match(text, /Artist A \(2\)/);
+  assert.match(text, /2026: 2/);
+  assert.match(text, /2020: 1/);
+  assert.match(text, /Oldest[\s\S]*Track 3/);
+});
+
+const searchUrl = (q) => `search?q=${q}&type=track&limit=5`;
+
+test('createPlaylistFromQueries resolves queries, creates the playlist and reports misses', async (t) => {
+  const result = await run(
+    t,
+    [
+      {
+        url: searchUrl('Wheatus+Teenage+Dirtbag'),
+        response: {
+          tracks: {
+            items: [{ ...mkTrack(1, 'Wheatus'), name: 'Teenage Dirtbag' }],
+          },
+        },
+      },
+      {
+        url: searchUrl('nothing+matches'),
+        response: { tracks: { items: [] } },
+      },
+      playlistsPage(),
+      {
+        url: 'me/playlists',
+        method: 'POST',
+        body: { name: 'Mix', public: false },
+        response: { id: S22 },
+      },
+      {
+        url: `playlists/${S22}/items`,
+        method: 'POST',
+        body: asItems(['t1']),
+        response: { snapshot_id: 's' },
+      },
+    ],
+    'createPlaylistFromQueries',
+    { name: 'Mix', queries: ['Wheatus - Teenage Dirtbag', 'nothing matches'] },
+  );
+  const text = resultText(result);
+  assert.match(text, /Created playlist "Mix" with 1 track/);
+  assert.match(
+    text,
+    /Wheatus - Teenage Dirtbag → Teenage Dirtbag — Wheatus \[t1\]/,
+  );
+  assert.match(text, /Not found[\s\S]*nothing matches/);
+});
+
+test('createPlaylistFromQueries adds only missing tracks to an existing playlist', async (t) => {
+  const result = await run(
+    t,
+    [
+      {
+        url: searchUrl('Track+1'),
+        response: { tracks: { items: [mkTrack(1)] } },
+      },
+      {
+        url: searchUrl('Track+2'),
+        response: { tracks: { items: [mkTrack(2)] } },
+      },
+      playlistsPage([S22, 'Mix']),
+      itemsPage(S22, ['t1']),
+      {
+        url: `playlists/${S22}/items`,
+        method: 'POST',
+        body: asItems(['t2']),
+        response: { snapshot_id: 's' },
+      },
+    ],
+    'createPlaylistFromQueries',
+    { name: 'Mix', queries: ['Track 1', 'Track 2'] },
+  );
+  assert.match(resultText(result), /Added 1 track.*1 already/s);
+});
+
+test('createPlaylistFromQueries dry run only searches', async (t) => {
+  const result = await run(
+    t,
+    [
+      { url: searchUrl('a'), response: { tracks: { items: [mkTrack(1)] } } },
+      playlistsPage(),
+    ],
+    'createPlaylistFromQueries',
+    { name: 'Mix', queries: ['a'], dryRun: true },
+  );
+  assert.match(resultText(result), /Dry run/);
+});
+
+test('findDuplicateTracks is strict by default: versions and remixes are not duplicates', async (t) => {
+  const result = await run(t, [dupLiked], 'findDuplicateTracks', {
+    source: 'liked',
+  });
+  assert.match(resultText(result), /0 duplicate groups/);
+});
+
+test('findDuplicateTracks strict mode still finds the same song under different IDs', async (t) => {
+  const page = {
+    url: 'me/tracks?limit=50&offset=0',
+    response: {
+      total: 2,
+      items: [
+        likedRow(1, 'Ed Sheeran', '2026-06-26T00:00:00Z', 'Azizam'),
+        likedRow(2, 'Ed Sheeran', '2025-04-13T00:00:00Z', 'azizam'),
+      ],
+    },
+  };
+  const result = await run(t, [page], 'findDuplicateTracks', {
+    source: 'liked',
+  });
+  const text = resultText(result);
+  assert.match(text, /1 duplicate group/);
+  assert.match(text, /KEEP.*\[t2\]/);
+});
+
+test('createPlaylistFromQueries does not add low-confidence matches', async (t) => {
+  const result = await run(
+    t,
+    [
+      {
+        url: searchUrl('qzxwv+nonsense'),
+        response: {
+          tracks: {
+            items: [{ ...mkTrack(9, 'Sabrina Carpenter'), name: 'Nonsense' }],
+          },
+        },
+      },
+      playlistsPage(),
+    ],
+    'createPlaylistFromQueries',
+    { name: 'Mix', queries: ['qzxwv nonsense'], dryRun: true },
+  );
+  const text = resultText(result);
+  assert.match(
+    text,
+    /Uncertain[\s\S]*qzxwv nonsense → Nonsense — Sabrina Carpenter/,
+  );
+  assert.match(text, /found 0 tracks/);
+});
+
+test('createPlaylistFromQueries picks the best of several search results', async (t) => {
+  const cover = { ...mkTrack(8, 'Some Cover Band'), name: 'Teenage Dirtbag' };
+  const original = mkTrack(1, 'Wheatus');
+  original.name = 'Teenage Dirtbag';
+  const result = await run(
+    t,
+    [
+      {
+        url: searchUrl('Wheatus+Teenage+Dirtbag'),
+        response: { tracks: { items: [cover, original] } },
+      },
+      playlistsPage(),
+    ],
+    'createPlaylistFromQueries',
+    { name: 'Mix', queries: ['Wheatus - Teenage Dirtbag'], dryRun: true },
+  );
+  assert.match(resultText(result), /Teenage Dirtbag — Wheatus \[t1\]/);
+});

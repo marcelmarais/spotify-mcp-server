@@ -122,3 +122,24 @@ export async function collectPages<T, R>(
   }
   return { results, total };
 }
+
+/** Maps items with at most `limit` promises in flight, preserving order. */
+export async function mapConcurrent<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  const workers = Array.from(
+    { length: Math.min(limit, items.length) },
+    async () => {
+      while (next < items.length) {
+        const index = next++;
+        out[index] = await fn(items[index] as T, index);
+      }
+    },
+  );
+  await Promise.all(workers);
+  return out;
+}

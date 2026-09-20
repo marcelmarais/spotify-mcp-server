@@ -48,6 +48,10 @@ export const toolNames = [
   'getAllPlaylistTracks',
   'getAllMyPlaylists',
   'moveLikedSongsToPlaylist',
+  'findDuplicateTracks',
+  'comparePlaylists',
+  'getLibraryOverview',
+  'createPlaylistFromQueries',
 ].sort();
 
 for (const mode of ['legacy', { pin: '2026-07-28' }]) {
@@ -83,6 +87,12 @@ for (const mode of ['legacy', { pin: '2026-07-28' }]) {
       ['getAllSavedTracks', { maxItems: 10001 }],
       ['getAllSavedTracks', { format: 'invalid' }],
       ['getAllPlaylistTracks', {}],
+      ['findDuplicateTracks', {}],
+      ['findDuplicateTracks', { source: 'liked', action: 'invalid' }],
+      ['findDuplicateTracks', { source: 'liked', match: 'invalid' }],
+      ['comparePlaylists', { a: 'liked' }],
+      ['createPlaylistFromQueries', { name: 'x', queries: [] }],
+      ['createPlaylistFromQueries', { queries: ['a'] }],
       ['moveLikedSongsToPlaylist', { toPlaylist: 'storage', dryRun: false }],
       ['moveLikedSongsToPlaylist', { all: true }],
       ['getAllMyPlaylists', { maxItems: 0 }],

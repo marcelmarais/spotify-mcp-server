@@ -1,5 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import { albumTools } from './albums.js';
+import { analysisTools } from './analysis.js';
 import { bulkTools } from './bulk.js';
 import { libraryTools } from './library.js';
 import { playTools } from './play.js';
@@ -21,6 +22,7 @@ export function createServer() {
     ...libraryTools,
     ...bulkTools,
     ...workflowTools,
+    ...analysisTools,
   ].forEach((tool) => {
     tool.register(server);
   });
