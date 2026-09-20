@@ -167,9 +167,13 @@ const searchSpotify = defineTool({
         } else if (type === 'playlist' && results.playlists) {
           formattedResults = results.playlists.items
             .map((playlist, i) => {
-              return `${i + 1}. "${playlist?.name ?? 'Unknown Playlist'} (${
-                playlist?.description ?? 'No description'
-              } tracks)" by ${playlist?.owner?.display_name} - ID: ${playlist?.id}`;
+              const counts = playlist as
+                | { items?: { total?: number }; tracks?: { total?: number } }
+                | undefined;
+              const count = counts?.items?.total ?? counts?.tracks?.total ?? 0;
+              return `${i + 1}. "${playlist?.name ?? 'Unknown Playlist'} (${count} tracks)" by ${
+                playlist?.owner?.display_name ?? 'Unknown'
+              } - ID: ${playlist?.id}`;
             })
             .join('\n');
         }

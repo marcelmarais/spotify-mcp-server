@@ -49,6 +49,28 @@ export function saveSpotifyConfig(config: SpotifyConfig): void {
 
 let cachedSpotifyApi: SpotifyApi | null = null;
 
+const MAX_RETRIES = 3;
+const MAX_RETRY_AFTER_SECONDS = 30;
+
+// 429 means the request was not processed, so it is safe to retry for every
+// method. Gateway errors are only retried for methods that are safe to repeat.
+function isRetryable(response: Response, method: string): boolean {
+  if (response.status === 429) return true;
+  return [502, 503, 504].includes(response.status) && method !== 'POST';
+}
+
+function retryDelayMs(response: Response, attempt: number): number {
+  const retryAfter = response.headers.get('retry-after');
+  if (retryAfter !== null && Number.isFinite(Number(retryAfter))) {
+    return Math.min(Number(retryAfter), MAX_RETRY_AFTER_SECONDS) * 1000;
+  }
+  const base = Number(process.env.SPOTIFY_RETRY_BASE_MS ?? 500);
+  return base * 2 ** attempt;
+}
+
+const sleep = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 /**
  * Direct Spotify Web API fetch helper.
  * Used to bypass @spotify/web-api-ts-sdk methods that hit deprecated endpoints
@@ -98,14 +120,24 @@ export async function spotifyFetch<T = unknown>(
     if (qsStr) url += `?${qsStr}`;
   }
 
-  const response = await fetch(url, {
+  const init: RequestInit = {
     method,
     headers: {
       Authorization: `Bearer ${config.accessToken}`,
       ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
     },
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-  });
+  };
+
+  let response = await fetch(url, init);
+  for (
+    let attempt = 0;
+    !response.ok && attempt < MAX_RETRIES && isRetryable(response, method);
+    attempt++
+  ) {
+    await sleep(retryDelayMs(response, attempt));
+    response = await fetch(url, init);
+  }
 
   if (!response.ok) {
     const errBody = await response.text();
@@ -495,9 +527,10 @@ export async function authorizeSpotify(): Promise<void> {
 }
 
 export function formatDuration(ms: number): string {
-  const minutes = Math.floor(ms / 60000);
-  const seconds = ((ms % 60000) / 1000).toFixed(0);
-  return `${minutes}:${seconds.padStart(2, '0')}`;
+  const totalSeconds = Math.round(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
 }
 
 export async function handleSpotifyRequest<T>(

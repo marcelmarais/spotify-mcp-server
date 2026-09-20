@@ -65,30 +65,60 @@ export interface Collected<R> {
   nextOffset?: number;
 }
 
-/** Pages through a Spotify list until it is exhausted or maxItems matches were found. */
+const CONCURRENCY = 4;
+
+/**
+ * Pages through a Spotify list until it is exhausted or maxItems matches were
+ * found. After the first page reveals the total, further pages are fetched in
+ * small concurrent batches; results are still processed in offset order.
+ */
 export async function collectPages<T, R>(
   options: CollectOptions<T, R>,
 ): Promise<Collected<R>> {
   const { fetchPage, select, startOffset, maxItems } = options;
   const results: R[] = [];
-  let offset = startOffset;
   let total = 0;
-  while (true) {
-    const page = await fetchPage(offset, PAGE_SIZE);
-    total = page.total;
-    const items = page.items ?? [];
-    for (let i = 0; i < items.length; i++) {
-      const selected = select(items[i] as T);
-      if (selected === null) continue;
-      results.push(selected);
-      if (results.length >= maxItems) {
-        const next = offset + i + 1;
-        return { results, total, nextOffset: next < total ? next : undefined };
+  let nextPageOffset = startOffset;
+  let first = true;
+
+  while (first || nextPageOffset < total) {
+    const stillNeeded = Math.ceil((maxItems - results.length) / PAGE_SIZE);
+    const remainingPages = first
+      ? 1
+      : Math.ceil((total - nextPageOffset) / PAGE_SIZE);
+    const batch = first
+      ? 1
+      : Math.min(CONCURRENCY, stillNeeded, remainingPages);
+    const offsets = Array.from(
+      { length: batch },
+      (_, i) => nextPageOffset + i * PAGE_SIZE,
+    );
+    first = false;
+
+    const pages = await Promise.all(
+      offsets.map((offset) => fetchPage(offset, PAGE_SIZE)),
+    );
+    for (let p = 0; p < pages.length; p++) {
+      const page = pages[p] as PageResult<T>;
+      total = page.total;
+      const items = page.items ?? [];
+      const base = offsets[p] as number;
+      for (let i = 0; i < items.length; i++) {
+        const selected = select(items[i] as T);
+        if (selected === null) continue;
+        results.push(selected);
+        if (results.length >= maxItems) {
+          const next = base + i + 1;
+          return {
+            results,
+            total,
+            nextOffset: next < total ? next : undefined,
+          };
+        }
       }
+      if (items.length === 0) return { results, total };
     }
-    offset += items.length;
-    if (items.length === 0 || offset >= total) {
-      return { results, total };
-    }
+    nextPageOffset = (offsets[offsets.length - 1] as number) + PAGE_SIZE;
   }
+  return { results, total };
 }

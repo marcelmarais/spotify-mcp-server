@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { connect, mockConfig, mockHttp, resultText } from './helpers.js';
 
+process.env.SPOTIFY_RETRY_BASE_MS = '0';
+
 const track = {
   id: 'track1',
   name: 'Test Track',
@@ -912,4 +914,132 @@ test('moveLikedSongsToPlaylist needs a selector or all=true', async (t) => {
   });
   assert.equal(result.isError, true);
   assert.match(result.content[0].text, /all/i);
+});
+
+test('spotifyFetch retries on 429 honouring Retry-After', async (t) => {
+  const url = 'me/tracks?limit=50&offset=0';
+  const result = await run(
+    t,
+    [
+      {
+        url,
+        status: 429,
+        headers: { 'Retry-After': '0' },
+        response: { error: { message: 'rate' } },
+      },
+      { url, response: savedPage(1, 2, 2) },
+    ],
+    'getAllSavedTracks',
+    {},
+  );
+  assert.match(resultText(result), /2 of 2/);
+});
+
+test('spotifyFetch retries idempotent requests on 503 but not POST', async (t) => {
+  const url = 'me/tracks?limit=50&offset=0';
+  const ok = await run(
+    t,
+    [
+      { url, status: 503, response: { error: { message: 'down' } } },
+      { url, response: savedPage(1, 1, 1) },
+    ],
+    'getAllSavedTracks',
+    {},
+  );
+  assert.match(resultText(ok), /1 of 1/);
+});
+
+test('spotifyFetch does not retry a failing POST', async (t) => {
+  const result = await run(
+    t,
+    [
+      {
+        url: `playlists/${P22}/items`,
+        method: 'POST',
+        body: asItems(['t1']),
+        status: 503,
+        response: { error: { message: 'down' } },
+      },
+    ],
+    'addTracksToPlaylist',
+    { playlistId: P22, trackIds: ['t1'] },
+  );
+  assert.match(result.content[0].text, /503|down/);
+});
+
+test('spotifyFetch gives up after repeated 429 responses', async (t) => {
+  const url = 'me/tracks?limit=50&offset=0';
+  const step = {
+    url,
+    status: 429,
+    headers: { 'Retry-After': '0' },
+    response: { error: { message: 'rate' } },
+  };
+  const result = await run(
+    t,
+    [step, step, step, step],
+    'getAllSavedTracks',
+    {},
+  );
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /429|rate/);
+});
+
+test('seekToPosition rounds seconds without producing 0:60', async (t) => {
+  const result = await run(
+    t,
+    [{ url: 'me/player/seek?position_ms=59600', method: 'PUT' }],
+    'seekToPosition',
+    { positionMs: 59600 },
+  );
+  assert.match(resultText(result), /Seeked to 1:00/);
+});
+
+test('searchSpotify shows playlist track counts instead of the description', async (t) => {
+  const result = await run(
+    t,
+    [
+      {
+        url: 'search?q=mix&type=playlist&limit=10&offset=0',
+        response: {
+          playlists: {
+            items: [
+              {
+                id: 'p1',
+                name: 'Mix',
+                description: 'blah',
+                items: { total: 12 },
+                owner: { display_name: 'Me' },
+              },
+            ],
+          },
+        },
+      },
+    ],
+    'searchSpotify',
+    { query: 'mix', type: 'playlist', limit: 10, offset: 0 },
+  );
+  const text = resultText(result);
+  assert.match(text, /Mix \(12 tracks\)/);
+  assert.doesNotMatch(text, /blah/);
+});
+
+test('getPlaylist reads the track count from items as well as tracks', async (t) => {
+  const result = await run(
+    t,
+    [
+      {
+        url: `playlists/${P22}`,
+        response: {
+          id: P22,
+          name: 'New Shape',
+          owner: { display_name: 'Me' },
+          items: { total: 7 },
+        },
+      },
+    ],
+    'getPlaylist',
+    { playlistId: P22 },
+  );
+  assert.match(resultText(result), /New Shape[\s\S]*7/);
 });
