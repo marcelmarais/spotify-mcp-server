@@ -23,13 +23,13 @@
   "dependencies": {
     "@modelcontextprotocol/server": "^2.0.0",
     "@spotify/web-api-ts-sdk": "^1.2.0",
-    "open": "^11.0.3",
-    "zod": "^4.6.2"
+    "open": "^11.0.4",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.13",
+    "@biomejs/biome": "^2.5.14",
     "@modelcontextprotocol/client": "^2.0.0",
-    "@types/node": "^26.5.1",
+    "@types/node": "^26.6.1",
     "typescript": "^7.0.2"
   },
   "engines": {
