@@ -411,6 +411,16 @@ To set up your MCP correctly with Cline ensure you have the following file confi
 
 You can add additional tools to the auto approval array to run the tools without intervention.
 
+### Streamable HTTP
+
+The server uses stdio by default. To run one long-lived process that several MCP clients connect to over HTTP instead, set `MCP_TRANSPORT=http`:
+
+```bash
+MCP_TRANSPORT=http MCP_HTTP_PORT=3000 node path/to/spotify-mcp-server/build/index.js
+```
+
+Clients then connect to `http://127.0.0.1:3000/mcp`. `MCP_HTTP_PORT` defaults to `3000` and `MCP_HTTP_HOST` to `127.0.0.1`. On a loopback address, requests whose `Host` or `Origin` header names anything other than `localhost`, `127.0.0.1`, `[::1]`, `MCP_HTTP_HOST` or the bound address are rejected to prevent DNS rebinding. The endpoint has no authentication, so only bind another address behind something that provides it.
+
 ## Development
 
 The server uses MCP TypeScript SDK v2 and Zod 4, serving protocol revision `2026-07-28` while retaining compatibility with legacy MCP clients. Only the latest Node.js Current release is supported (minimum v26.8.1). CI follows the latest Current release. Install the locked dependencies with `npm ci`.
