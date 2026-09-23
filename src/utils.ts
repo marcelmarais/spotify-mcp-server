@@ -48,6 +48,10 @@ export function saveSpotifyConfig(config: SpotifyConfig): void {
 }
 
 let cachedSpotifyApi: SpotifyApi | null = null;
+// Access token the cached client was built with (null = client-credentials fallback).
+// Without this, a client built while no user token existed was reused after `npm run auth`,
+// so every user endpoint kept failing with "Bad or expired token" until a process restart.
+let cachedAccessToken: string | null = null;
 
 /**
  * Direct Spotify Web API fetch helper.
@@ -149,7 +153,7 @@ export async function createSpotifyApi(): Promise<SpotifyApi> {
       }
     }
 
-    if (cachedSpotifyApi) {
+    if (cachedSpotifyApi && cachedAccessToken === config.accessToken) {
       return cachedSpotifyApi;
     }
 
@@ -163,6 +167,7 @@ export async function createSpotifyApi(): Promise<SpotifyApi> {
     };
 
     cachedSpotifyApi = SpotifyApi.withAccessToken(config.clientId, accessToken);
+    cachedAccessToken = config.accessToken;
     return cachedSpotifyApi;
   }
 
@@ -171,6 +176,7 @@ export async function createSpotifyApi(): Promise<SpotifyApi> {
     config.clientId,
     config.clientSecret,
   );
+  cachedAccessToken = null;
 
   return cachedSpotifyApi;
 }
