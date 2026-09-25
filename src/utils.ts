@@ -43,11 +43,103 @@ export function loadSpotifyConfig(): SpotifyConfig {
   }
 }
 
+function errorCode(error: unknown): string | undefined {
+  return (error as NodeJS.ErrnoException).code;
+}
+
+function resolveSymlinks(file: string): string {
+  try {
+    return fs.realpathSync(file);
+  } catch (error) {
+    if (errorCode(error) !== 'ENOENT') throw error;
+  }
+  let isLink = false;
+  try {
+    isLink = fs.lstatSync(file).isSymbolicLink();
+  } catch (error) {
+    if (errorCode(error) !== 'ENOENT') throw error;
+  }
+  if (isLink) throw new Error(`${file} is a dangling symbolic link`);
+  return file;
+}
+
+export function writeFileAtomic(file: string, data: string): void {
+  const target = resolveSymlinks(file);
+  let mode = 0o600;
+  try {
+    mode = fs.statSync(target).mode & 0o777;
+  } catch (error) {
+    if (errorCode(error) !== 'ENOENT') throw error;
+  }
+  const tmp = `${target}.${process.pid}.${crypto.randomBytes(6).toString('hex')}.tmp`;
+  let owned = false;
+  let fd: number | undefined;
+  try {
+    fd = fs.openSync(tmp, 'wx', mode);
+    owned = true;
+    fs.fchmodSync(fd, mode);
+    fs.writeFileSync(fd, data, 'utf8');
+    fs.closeSync(fd);
+    fd = undefined;
+    fs.renameSync(tmp, target);
+  } catch (error) {
+    if (fd !== undefined) {
+      try {
+        fs.closeSync(fd);
+      } catch {}
+    }
+    if (owned) {
+      try {
+        fs.unlinkSync(tmp);
+      } catch {}
+    }
+    throw error;
+  }
+}
+
 export function saveSpotifyConfig(config: SpotifyConfig): void {
-  fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), 'utf8');
+  writeFileAtomic(CONFIG_FILE, JSON.stringify(config, null, 2));
 }
 
 let cachedSpotifyApi: SpotifyApi | null = null;
+let cachedAccessToken: string | null = null;
+let refreshInFlight: Promise<SpotifyConfig> | null = null;
+
+function needsRefresh(config: SpotifyConfig, bufferMs: number): boolean {
+  return Boolean(
+    config.accessToken &&
+      config.refreshToken &&
+      (!config.expiresAt || config.expiresAt <= Date.now() + bufferMs),
+  );
+}
+
+/**
+ * Refreshes the access token unless the config on disk no longer needs it.
+ * Concurrent callers in this process share one in-flight refresh, so a rotated
+ * refresh token is never spent twice.
+ */
+function refreshSpotifyConfig(bufferMs: number): Promise<SpotifyConfig> {
+  if (!refreshInFlight) {
+    refreshInFlight = (async () => {
+      const latest = loadSpotifyConfig();
+      if (!needsRefresh(latest, bufferMs)) return latest;
+      console.error(
+        'Access token expired or missing expiration time, refreshing...',
+      );
+      const now = Date.now();
+      const tokens = await refreshAccessToken(latest);
+      latest.accessToken = tokens.access_token;
+      latest.expiresAt = now + tokens.expires_in * 1000;
+      saveSpotifyConfig(latest);
+      cachedSpotifyApi = null;
+      console.error('Access token refreshed successfully');
+      return latest;
+    })().finally(() => {
+      refreshInFlight = null;
+    });
+  }
+  return refreshInFlight;
+}
 
 /**
  * Direct Spotify Web API fetch helper.
@@ -66,19 +158,8 @@ export async function spotifyFetch<T = unknown>(
   } = {},
 ): Promise<T> {
   const { method = 'GET', body, query } = options;
-  const config = loadSpotifyConfig();
-
-  // Refresh token if expired
-  if (config.accessToken && config.refreshToken) {
-    const now = Date.now();
-    if (!config.expiresAt || config.expiresAt <= now) {
-      const tokens = await refreshAccessToken(config);
-      config.accessToken = tokens.access_token;
-      config.expiresAt = now + tokens.expires_in * 1000;
-      saveSpotifyConfig(config);
-      cachedSpotifyApi = null;
-    }
-  }
+  let config = loadSpotifyConfig();
+  if (needsRefresh(config, 0)) config = await refreshSpotifyConfig(0);
 
   if (!config.accessToken) {
     throw new Error(
@@ -121,38 +202,25 @@ export async function spotifyFetch<T = unknown>(
 }
 
 export async function createSpotifyApi(): Promise<SpotifyApi> {
-  const config = loadSpotifyConfig();
+  const refreshBufferMs = 5 * 60 * 1000;
+  let config = loadSpotifyConfig();
+  if (needsRefresh(config, refreshBufferMs)) {
+    try {
+      config = await refreshSpotifyConfig(refreshBufferMs);
+    } catch (error) {
+      console.error('Failed to refresh token:', error);
+      throw new Error(
+        'Failed to refresh access token. Please run "npm run auth" to re-authenticate.',
+      );
+    }
+  }
 
   if (config.accessToken && config.refreshToken) {
-    const now = Date.now();
-    const shouldRefresh =
-      !config.expiresAt || config.expiresAt <= now + 5 * 60 * 1000;
-
-    if (shouldRefresh) {
-      console.error(
-        'Access token expired or missing expiration time, refreshing...',
-      );
-      try {
-        const tokens = await refreshAccessToken(config);
-        config.accessToken = tokens.access_token;
-        config.expiresAt = now + tokens.expires_in * 1000; // Convert seconds to milliseconds
-        saveSpotifyConfig(config);
-        console.error('Access token refreshed successfully');
-
-        // Clear cached API instance to force recreation with new token
-        cachedSpotifyApi = null;
-      } catch (error) {
-        console.error('Failed to refresh token:', error);
-        throw new Error(
-          'Failed to refresh access token. Please run "npm run auth" to re-authenticate.',
-        );
-      }
-    }
-
-    if (cachedSpotifyApi) {
+    if (cachedSpotifyApi && cachedAccessToken === config.accessToken) {
       return cachedSpotifyApi;
     }
 
+    const now = Date.now();
     const accessToken = {
       access_token: config.accessToken,
       token_type: 'Bearer',
@@ -163,6 +231,7 @@ export async function createSpotifyApi(): Promise<SpotifyApi> {
     };
 
     cachedSpotifyApi = SpotifyApi.withAccessToken(config.clientId, accessToken);
+    cachedAccessToken = config.accessToken;
     return cachedSpotifyApi;
   }
 
@@ -171,6 +240,7 @@ export async function createSpotifyApi(): Promise<SpotifyApi> {
     config.clientId,
     config.clientSecret,
   );
+  cachedAccessToken = null;
 
   return cachedSpotifyApi;
 }
