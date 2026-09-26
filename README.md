@@ -112,6 +112,23 @@ A lightweight [Model Context Protocol (MCP)](https://modelcontextprotocol.io) se
    - **Example**: `removeUsersSavedTracks({ trackIds: ["4iV5W9uYEdYUVa79Axb7Rh", "1301WleyT98MSxVHPZCA6M"] })`
 
 
+10. **saveTracksToLibrary**
+
+   - **Description**: Save one or more tracks to the user's "Liked Songs" library (max 40 per request)
+   - **Parameters**:
+     - `trackIds` (array): Array of Spotify track IDs to save (1-40)
+   - **Returns**: Success confirmation message
+   - **Example**: `saveTracksToLibrary({ trackIds: ["4iV5W9uYEdYUVa79Axb7Rh"] })`
+
+11. **checkUsersSavedTracks**
+
+   - **Description**: Check whether tracks are saved in the user's "Liked Songs" library (max 40 per request)
+   - **Parameters**:
+     - `trackIds` (array): Array of Spotify track IDs to check (1-40)
+   - **Returns**: Per track "Saved" / "Not saved"
+   - **Example**: `checkUsersSavedTracks({ trackIds: ["4iV5W9uYEdYUVa79Axb7Rh", "1301WleyT98MSxVHPZCA6M"] })`
+
+
 ### Play / Create Operations
 
 1. **playMusic**
@@ -209,6 +226,98 @@ A lightweight [Model Context Protocol (MCP)](https://modelcontextprotocol.io) se
    - **Example**: `adjustVolume({ adjustment: 10 })` (increase by 10%)
    - **Example**: `adjustVolume({ adjustment: -20 })` (decrease by 20%)
 
+
+11. **setShuffle**
+
+   - **Description**: Turn shuffle on or off (requires Spotify Premium; Smart Shuffle is not available via the Web API)
+   - **Parameters**:
+     - `state` (boolean): true to enable, false to disable
+     - `deviceId` (string, optional): ID of the target device
+   - **Example**: `setShuffle({ state: true })`
+
+12. **setRepeat**
+
+   - **Description**: Set the repeat mode (requires Spotify Premium)
+   - **Parameters**:
+     - `state` (string): `off`, `context` (playlist/album) or `track`
+     - `deviceId` (string, optional): ID of the target device
+   - **Example**: `setRepeat({ state: "context" })`
+
+13. **transferPlayback**
+
+   - **Description**: Transfer playback to another device (requires Spotify Premium)
+   - **Parameters**:
+     - `deviceId` (string): ID of the device to transfer playback to (from `getAvailableDevices`)
+     - `play` (boolean, optional): true to start playing on the new device
+   - **Example**: `transferPlayback({ deviceId: "abc123", play: true })`
+
+14. **seekToPosition**
+
+   - **Description**: Seek to a position in the currently playing track (requires Spotify Premium)
+   - **Parameters**:
+     - `positionMs` (number): Position in milliseconds
+     - `deviceId` (string, optional): ID of the target device
+   - **Example**: `seekToPosition({ positionMs: 90000 })`
+
+
+### Bulk and Workflow Operations
+
+These tools do the paging, chunking and lookups for you, so a client does not have to call the single-page tools in a loop.
+
+1. **getAllSavedTracks** / **getAllPlaylistTracks** / **getAllMyPlaylists**
+
+   - **Description**: Return an entire list (Liked Songs, a playlist's tracks, your playlists) across all pages in one call
+   - **Parameters**:
+     - `playlistId` (string, `getAllPlaylistTracks` only): playlist by Spotify ID **or name** (case-insensitive)
+     - `query` (string, optional): only entries whose title, artist or album (playlist name for `getAllMyPlaylists`) contains this text
+     - `maxItems` (number, optional): default 500, max 10000; if more exist the result names the `offset` to continue from
+     - `offset` (number, optional): start position
+     - `format` (string, optional): `compact` (default, `Title — Artist [id]`) or `ids` (comma-separated IDs only, cheapest output)
+   - **Example**: `getAllSavedTracks({ query: "alligatoah" })`, `getAllSavedTracks({ maxItems: 10000, format: "ids" })`
+
+2. **moveLikedSongsToPlaylist**
+
+   - **Description**: Move (or copy) Liked Songs into a playlist in one step: select by filter, create the playlist if missing, add only songs that are not already in it, then remove them from the Liked Songs. Runs as a dry run unless `dryRun: false`.
+   - **Parameters**:
+     - `toPlaylist` (string): target playlist by name (created private if missing) or ID
+     - Selectors (at least one required): `all` (boolean), `query` (string), `trackIds` (array), `addedBefore` / `addedAfter` (ISO dates)
+     - `removeFromLiked` (boolean, optional): default `true` (move); `false` copies only
+     - `dryRun` (boolean, optional): default `true`
+   - **Example**: `moveLikedSongsToPlaylist({ toPlaylist: "storage", all: true, dryRun: false })`
+
+3. **findDuplicateTracks**
+
+   - **Description**: Find duplicate songs in the Liked Songs or a playlist; the oldest entry is kept, the rest are listed as extras. With `action: "remove"` the extras are removed (repeated copies of the very same track ID cannot be removed individually and are only reported).
+   - **Parameters**:
+     - `source` (string): `liked` for the Liked Songs, or a playlist by ID or name
+     - `match` (string, optional): `strict` (default, same title and artist) or `similar` (also merges remasters, radio edits and remixes with the same base title)
+     - `action` (string, optional): `report` (default) or `remove`
+     - `maxGroups` (number, optional): groups to list (default 50)
+   - **Example**: `findDuplicateTracks({ source: "liked" })`, `findDuplicateTracks({ source: "storage", action: "remove" })`
+
+4. **comparePlaylists**
+
+   - **Description**: Compare two collections (Liked Songs and/or playlists): only in A, only in B, in both
+   - **Parameters**: `a`, `b` (`liked` or playlist ID/name), `by` (`id` default or `title-artist`), `maxItems` (per section, default 100), `format` (`compact` or `ids`)
+   - **Example**: `comparePlaylists({ a: "liked", b: "storage" })`
+
+5. **getLibraryOverview**
+
+   - **Description**: One-call summary: number of Liked Songs and playlists, total length, top artists, songs liked per year, oldest and newest likes, estimate of duplicates
+   - **Parameters**: `topArtists` (number, optional, default 15)
+   - **Example**: `getLibraryOverview()`
+
+6. **createPlaylistFromQueries**
+
+   - **Description**: Build a playlist from plain-text descriptions such as `Artist - Title`. Each line is searched on Spotify and only confident matches are used; uncertain and missing lines are reported instead of being added. Creates the playlist, or extends an existing one with the same name (skipping songs already in it).
+   - **Parameters**: `name`, `queries` (array), `description` (optional), `public` (optional, default false), `dryRun` (optional, only search and report)
+   - **Example**: `createPlaylistFromQueries({ name: "Road Trip", queries: ["Wheatus - Teenage Dirtbag", "Alligatoah - Willst du"] })`
+
+All playlist tools accept a playlist **name** wherever they take a `playlistId` (case-insensitive, unique partial matches allowed; ambiguous names produce an error that lists the candidates).
+
+Requests that hit Spotify's rate limit (HTTP 429) are retried automatically (honouring `Retry-After`), and so are transient 502/503/504 errors on requests that are safe to repeat. Long lists are fetched with a few pages in parallel.
+
+Large ID lists are accepted by `saveTracksToLibrary`, `removeUsersSavedTracks`, `checkUsersSavedTracks`, `addTracksToPlaylist` and `removeTracksFromPlaylist` (up to 5000 per call); they are split into Spotify-sized requests automatically and report partial progress if a later request fails.
 
 ### Album Operations
 

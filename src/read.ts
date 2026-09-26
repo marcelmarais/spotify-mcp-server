@@ -1,5 +1,6 @@
 import type { MaxInt } from '@spotify/web-api-ts-sdk';
 import { z } from 'zod';
+import { playlistIdFrom, playlistParam } from './resolve.js';
 import { defineTool } from './tool.js';
 import type {
   SpotifyEpisode,
@@ -11,13 +12,7 @@ import type {
   SpotifySimplifiedEpisode,
   SpotifyTrack,
 } from './types.js';
-import {
-  createSpotifyApi,
-  formatDuration,
-  handleSpotifyRequest,
-  loadSpotifyConfig,
-  spotifyFetch,
-} from './utils.js';
+import { formatDuration, handleSpotifyRequest, spotifyFetch } from './utils.js';
 
 function isTrack(item: any): item is SpotifyTrack {
   return (
@@ -173,9 +168,13 @@ const searchSpotify = defineTool({
         } else if (type === 'playlist' && results.playlists) {
           formattedResults = results.playlists.items
             .map((playlist, i) => {
-              return `${i + 1}. "${playlist?.name ?? 'Unknown Playlist'} (${
-                playlist?.description ?? 'No description'
-              } tracks)" by ${playlist?.owner?.display_name} - ID: ${playlist?.id}`;
+              const counts = playlist as
+                | { items?: { total?: number }; tracks?: { total?: number } }
+                | undefined;
+              const count = counts?.items?.total ?? counts?.tracks?.total ?? 0;
+              return `${i + 1}. "${playlist?.name ?? 'Unknown Playlist'} (${count} tracks)" by ${
+                playlist?.owner?.display_name ?? 'Unknown'
+              } - ID: ${playlist?.id}`;
             })
             .join('\n');
         }
@@ -361,7 +360,7 @@ const getPlaylistTracks = defineTool({
   name: 'getPlaylistTracks',
   description: 'Get a list of tracks in a Spotify playlist',
   schema: {
-    playlistId: z.string().describe('The Spotify ID of the playlist'),
+    playlistId: playlistParam,
     limit: z
       .number()
       .min(1)
@@ -375,7 +374,8 @@ const getPlaylistTracks = defineTool({
       .describe('Offset for pagination (0-based index)'),
   },
   handler: async (args, _extra: SpotifyHandlerExtra) => {
-    const { playlistId, limit = 50, offset = 0 } = args;
+    const { playlistId: playlistRef, limit = 50, offset = 0 } = args;
+    const playlistId = await playlistIdFrom(playlistRef);
 
     // Hit /items directly: see spotifyFetch JSDoc for context.
     // Response wraps each entry's track under `item` (new) or `track` (legacy).
@@ -706,69 +706,6 @@ const getAvailableDevices = defineTool({
   },
 });
 
-const removeUsersSavedTracks = defineTool({
-  name: 'removeUsersSavedTracks',
-  description:
-    'Remove one or more tracks from the user\'s "Liked Songs" library (max 40 per request)',
-  schema: {
-    trackIds: z
-      .array(z.string())
-      .max(40)
-      .describe('Array of Spotify track IDs to remove (max 40)'),
-  },
-  handler: async (args, _extra: SpotifyHandlerExtra) => {
-    const { trackIds } = args;
-
-    if (trackIds.length === 0) {
-      return {
-        content: [{ type: 'text', text: 'Error: No track IDs provided' }],
-      };
-    }
-
-    try {
-      // Ensure token is fresh (handles auto-refresh if needed)
-      await createSpotifyApi();
-      const config = loadSpotifyConfig();
-
-      const uris = trackIds.map((id) => `spotify:track:${id}`).join(',');
-      const response = await fetch(
-        `https://api.spotify.com/v1/me/library?uris=${encodeURIComponent(uris)}`,
-        {
-          method: 'DELETE',
-          headers: {
-            Authorization: `Bearer ${config.accessToken}`,
-          },
-        },
-      );
-
-      if (!response.ok) {
-        const errorData = await response.text();
-        throw new Error(`Spotify API error ${response.status}: ${errorData}`);
-      }
-
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Successfully removed ${trackIds.length} track${trackIds.length === 1 ? '' : 's'} from your Liked Songs`,
-          },
-        ],
-      };
-    } catch (error) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Error removing tracks from Liked Songs: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          },
-        ],
-      };
-    }
-  },
-});
-
 const TIME_RANGES = ['short_term', 'medium_term', 'long_term'] as const;
 type TimeRange = (typeof TIME_RANGES)[number];
 
@@ -901,7 +838,6 @@ export const readTools = [
   getPlaylistTracks,
   getRecentlyPlayed,
   getUsersSavedTracks,
-  removeUsersSavedTracks,
   getQueue,
   getAvailableDevices,
   getTopTracks,

@@ -1,8 +1,12 @@
 import { McpServer } from '@modelcontextprotocol/server';
 import { albumTools } from './albums.js';
+import { analysisTools } from './analysis.js';
+import { bulkTools } from './bulk.js';
+import { libraryTools } from './library.js';
 import { playTools } from './play.js';
 import { playlistTools } from './playlist.js';
 import { readTools } from './read.js';
+import { workflowTools } from './workflows.js';
 
 export function createServer() {
   const server = new McpServer({
@@ -10,11 +14,18 @@ export function createServer() {
     version: '1.0.0',
   });
 
-  [...readTools, ...playTools, ...albumTools, ...playlistTools].forEach(
-    (tool) => {
-      tool.register(server);
-    },
-  );
+  [
+    ...readTools,
+    ...playTools,
+    ...albumTools,
+    ...playlistTools,
+    ...libraryTools,
+    ...bulkTools,
+    ...workflowTools,
+    ...analysisTools,
+  ].forEach((tool) => {
+    tool.register(server);
+  });
 
   return server;
 }

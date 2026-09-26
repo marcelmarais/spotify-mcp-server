@@ -1,5 +1,7 @@
 import { z } from 'zod';
-import { defineTool } from './tool.js';
+import { MAX_BULK_IDS, partialFailure, processInChunks } from './paging.js';
+import { playlistIdFrom, playlistParam } from './resolve.js';
+import { defineTool, toolError } from './tool.js';
 import type { SpotifyHandlerExtra } from './types.js';
 import { handleSpotifyRequest, spotifyFetch } from './utils.js';
 
@@ -8,19 +10,23 @@ const getPlaylist = defineTool({
   description:
     'Get details of a specific Spotify playlist including tracks count, description and owner',
   schema: {
-    playlistId: z.string().describe('The Spotify ID of the playlist'),
+    playlistId: playlistParam,
   },
   handler: async (args, _extra: SpotifyHandlerExtra) => {
-    const { playlistId } = args;
+    const { playlistId: playlistRef } = args;
 
     try {
+      const playlistId = await playlistIdFrom(playlistRef);
       const playlist = await handleSpotifyRequest(async (spotifyApi) => {
         return await spotifyApi.playlists.getPlaylist(playlistId);
       });
 
       const owner =
         playlist.owner?.display_name ?? playlist.owner?.id ?? 'Unknown';
-      const tracksTotal = playlist.tracks?.total ?? 0;
+      const tracksTotal =
+        playlist.tracks?.total ??
+        (playlist as { items?: { total?: number } }).items?.total ??
+        0;
       const isPublic = playlist.public ? 'Public' : 'Private';
       const isCollaborative = playlist.collaborative ? ' | Collaborative' : '';
       const description = playlist.description
@@ -63,7 +69,7 @@ const updatePlaylist = defineTool({
   description:
     'Update the details of a Spotify playlist (name, description, public/private, collaborative)',
   schema: {
-    playlistId: z.string().describe('The Spotify ID of the playlist'),
+    playlistId: playlistParam,
     name: z.string().optional().describe('New name for the playlist'),
     description: z
       .string()
@@ -82,7 +88,7 @@ const updatePlaylist = defineTool({
   },
   handler: async (args, _extra: SpotifyHandlerExtra) => {
     const {
-      playlistId,
+      playlistId: playlistRef,
       name,
       description,
       public: isPublic,
@@ -106,6 +112,7 @@ const updatePlaylist = defineTool({
     }
 
     try {
+      const playlistId = await playlistIdFrom(playlistRef);
       const body: Record<string, string | boolean> = {};
       if (name) body.name = name;
       if (description !== undefined) body.description = description;
@@ -143,61 +150,68 @@ const updatePlaylist = defineTool({
 const removeTracksFromPlaylist = defineTool({
   name: 'removeTracksFromPlaylist',
   description:
-    'Remove one or more tracks from a Spotify playlist (max 100 tracks per request)',
+    'Remove tracks from a Spotify playlist by ID or URI. Any number of IDs is fine, chunking is handled internally.',
   schema: {
-    playlistId: z.string().describe('The Spotify ID of the playlist'),
+    playlistId: playlistParam,
     trackIds: z
       .array(z.string())
       .min(1)
-      .max(100)
-      .describe('Array of Spotify track IDs to remove (max 100)'),
+      .max(MAX_BULK_IDS)
+      .describe(
+        `Array of Spotify track IDs or URIs to remove (1-${MAX_BULK_IDS})`,
+      ),
     snapshotId: z
       .string()
       .optional()
       .describe(
-        'The playlist snapshot ID to target a specific version (optional)',
+        'The playlist snapshot ID to target a specific version (optional, applied to the first request only)',
       ),
   },
   handler: async (args, _extra: SpotifyHandlerExtra) => {
-    const { playlistId, trackIds, snapshotId } = args;
-
+    const { playlistId: playlistRef, trackIds, snapshotId } = args;
+    const uris = trackIds.map((id) =>
+      id.startsWith('spotify:') ? id : `spotify:track:${id}`,
+    );
+    let playlistId: string;
     try {
-      const items = trackIds.map((id) => ({
-        uri: id.startsWith('spotify:') ? id : `spotify:track:${id}`,
-      }));
-
-      // Hit /items directly: SDK targets the deprecated /tracks endpoint
-      // (see spotifyFetch JSDoc for context on the March 2026 migration).
-      await spotifyFetch(`playlists/${playlistId}/items`, {
-        method: 'DELETE',
-        body: {
-          items,
-          ...(snapshotId ? { snapshot_id: snapshotId } : {}),
-        },
-      });
-
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Successfully removed ${trackIds.length} track${
-              trackIds.length === 1 ? '' : 's'
-            } from playlist (ID: ${playlistId})`,
-          },
-        ],
-      };
+      playlistId = await playlistIdFrom(playlistRef);
     } catch (error) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Error removing tracks from playlist: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          },
-        ],
-      };
+      return toolError('removing tracks from playlist', error);
     }
+
+    // Hit /items directly: SDK targets the deprecated /tracks endpoint
+    // (see spotifyFetch JSDoc for context on the March 2026 migration).
+    const { processed, error } = await processInChunks(
+      uris,
+      100,
+      (part, start) =>
+        spotifyFetch(`playlists/${playlistId}/items`, {
+          method: 'DELETE',
+          body: {
+            items: part.map((uri) => ({ uri })),
+            ...(snapshotId && start === 0 ? { snapshot_id: snapshotId } : {}),
+          },
+        }),
+    );
+    if (error) {
+      return partialFailure(
+        'removing tracks from playlist',
+        processed,
+        uris.length,
+        error,
+      );
+    }
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Successfully removed ${processed} track${
+            processed === 1 ? '' : 's'
+          } from playlist (ID: ${playlistId})`,
+        },
+      ],
+    };
   },
 });
 
@@ -206,7 +220,7 @@ const reorderPlaylistItems = defineTool({
   description:
     'Reorder a range of tracks within a Spotify playlist by moving them to a new position',
   schema: {
-    playlistId: z.string().describe('The Spotify ID of the playlist'),
+    playlistId: playlistParam,
     rangeStart: z
       .number()
       .nonnegative()
@@ -230,10 +244,16 @@ const reorderPlaylistItems = defineTool({
       ),
   },
   handler: async (args, _extra: SpotifyHandlerExtra) => {
-    const { playlistId, rangeStart, insertBefore, rangeLength, snapshotId } =
-      args;
+    const {
+      playlistId: playlistRef,
+      rangeStart,
+      insertBefore,
+      rangeLength,
+      snapshotId,
+    } = args;
 
     try {
+      const playlistId = await playlistIdFrom(playlistRef);
       // Hit /items directly: see spotifyFetch JSDoc for context.
       await spotifyFetch(`playlists/${playlistId}/items`, {
         method: 'PUT',
@@ -279,12 +299,15 @@ const unfollowPlaylist = defineTool({
   schema: {
     playlistId: z
       .string()
-      .describe('The Spotify ID of the playlist to unfollow'),
+      .describe(
+        'The playlist to unfollow, by Spotify ID or by name (case-insensitive)',
+      ),
   },
   handler: async (args, _extra: SpotifyHandlerExtra) => {
-    const { playlistId } = args;
+    const { playlistId: playlistRef } = args;
 
     try {
+      const playlistId = await playlistIdFrom(playlistRef);
       await spotifyFetch(`playlists/${playlistId}/followers`, {
         method: 'DELETE',
       });

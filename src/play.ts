@@ -1,7 +1,9 @@
 import { z } from 'zod';
-import { defineTool } from './tool.js';
+import { MAX_BULK_IDS, partialFailure, processInChunks } from './paging.js';
+import { playlistIdFrom, playlistParam } from './resolve.js';
+import { defineTool, toolError } from './tool.js';
 import type { SpotifyHandlerExtra } from './types.js';
-import { handleSpotifyRequest, spotifyFetch } from './utils.js';
+import { formatDuration, handleSpotifyRequest, spotifyFetch } from './utils.js';
 
 /**
  * Ensures there is an active Spotify device before attempting playback.
@@ -295,11 +297,12 @@ const addTracksToPlaylist = defineTool({
     'Add tracks or podcast episodes to a Spotify playlist. ' +
     'Accepts Spotify track IDs, episode IDs, or full Spotify URIs (e.g. spotify:episode:xxx).',
   schema: {
-    playlistId: z.string().describe('The Spotify ID of the playlist'),
+    playlistId: playlistParam,
     trackIds: z
       .array(z.string())
+      .max(MAX_BULK_IDS)
       .describe(
-        'Array of Spotify IDs or URIs to add. ' +
+        'Array of Spotify IDs or URIs to add (chunked automatically). ' +
           'Plain IDs are assumed to be tracks. ' +
           'To add podcast episodes, pass full URIs: spotify:episode:{id}.',
       ),
@@ -310,7 +313,7 @@ const addTracksToPlaylist = defineTool({
       .describe('Position to insert the items (0-based index)'),
   },
   handler: async (args, _extra: SpotifyHandlerExtra) => {
-    const { playlistId, trackIds, position } = args;
+    const { playlistId: playlistRef, trackIds, position } = args;
 
     if (trackIds.length === 0) {
       return {
@@ -318,42 +321,50 @@ const addTracksToPlaylist = defineTool({
       };
     }
 
+    const uris = trackIds.map((id) =>
+      id.startsWith('spotify:') ? id : `spotify:track:${id}`,
+    );
+    let playlistId: string;
     try {
-      const uris = trackIds.map((id) =>
-        id.startsWith('spotify:') ? id : `spotify:track:${id}`,
-      );
-
-      // Hit /items directly: see spotifyFetch JSDoc for context.
-      await spotifyFetch(`playlists/${playlistId}/items`, {
-        method: 'POST',
-        body: {
-          uris,
-          ...(position !== undefined ? { position } : {}),
-        },
-      });
-
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Successfully added ${trackIds.length} item${
-              trackIds.length === 1 ? '' : 's'
-            } to playlist (ID: ${playlistId})`,
-          },
-        ],
-      };
+      playlistId = await playlistIdFrom(playlistRef);
     } catch (error) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Error adding items to playlist: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          },
-        ],
-      };
+      return toolError('adding items to playlist', error);
     }
+
+    // Hit /items directly: see spotifyFetch JSDoc for context.
+    // Spotify accepts at most 100 items per request; later chunks are
+    // inserted after the earlier ones so the given order is preserved.
+    const { processed, error } = await processInChunks(
+      uris,
+      100,
+      (part, start) =>
+        spotifyFetch(`playlists/${playlistId}/items`, {
+          method: 'POST',
+          body: {
+            uris: part,
+            ...(position !== undefined ? { position: position + start } : {}),
+          },
+        }),
+    );
+    if (error) {
+      return partialFailure(
+        'adding items to playlist',
+        processed,
+        uris.length,
+        error,
+      );
+    }
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `Successfully added ${processed} item${
+            processed === 1 ? '' : 's'
+          } to playlist (ID: ${playlistId})`,
+        },
+      ],
+    };
   },
 });
 
@@ -577,6 +588,123 @@ const adjustVolume = defineTool({
   },
 });
 
+const deviceIdSchema = z
+  .string()
+  .optional()
+  .describe('The Spotify device ID to target (defaults to the active device)');
+
+const setShuffle = defineTool({
+  name: 'setShuffle',
+  description:
+    'Turn shuffle on or off for the current playback. Smart Shuffle is not available via the Spotify Web API. Requires Spotify Premium.',
+  schema: {
+    state: z.boolean().describe('true to enable shuffle, false to disable'),
+    deviceId: deviceIdSchema,
+  },
+  handler: async (args, _extra: SpotifyHandlerExtra) => {
+    const { state, deviceId } = args;
+    try {
+      await spotifyFetch('me/player/shuffle', {
+        method: 'PUT',
+        query: { state: String(state), device_id: deviceId },
+      });
+      return {
+        content: [
+          { type: 'text', text: `Shuffle turned ${state ? 'on' : 'off'}` },
+        ],
+      };
+    } catch (error) {
+      return toolError('setting shuffle', error);
+    }
+  },
+});
+
+const setRepeat = defineTool({
+  name: 'setRepeat',
+  description:
+    'Set the repeat mode: "off", "context" (repeat current playlist/album) or "track" (repeat current track). Requires Spotify Premium.',
+  schema: {
+    state: z.enum(['off', 'context', 'track']).describe('The repeat mode'),
+    deviceId: deviceIdSchema,
+  },
+  handler: async (args, _extra: SpotifyHandlerExtra) => {
+    const { state, deviceId } = args;
+    try {
+      await spotifyFetch('me/player/repeat', {
+        method: 'PUT',
+        query: { state, device_id: deviceId },
+      });
+      return {
+        content: [{ type: 'text', text: `Repeat mode set to ${state}` }],
+      };
+    } catch (error) {
+      return toolError('setting repeat mode', error);
+    }
+  },
+});
+
+const transferPlayback = defineTool({
+  name: 'transferPlayback',
+  description:
+    'Transfer playback to another device (IDs from getAvailableDevices). Requires Spotify Premium.',
+  schema: {
+    deviceId: z
+      .string()
+      .describe('The Spotify device ID to transfer playback to'),
+    play: z
+      .boolean()
+      .optional()
+      .describe(
+        'true to start playing on the new device, false/omitted keeps the current play state',
+      ),
+  },
+  handler: async (args, _extra: SpotifyHandlerExtra) => {
+    const { deviceId, play } = args;
+    try {
+      await spotifyFetch('me/player', {
+        method: 'PUT',
+        body: {
+          device_ids: [deviceId],
+          ...(play !== undefined ? { play } : {}),
+        },
+      });
+      return {
+        content: [
+          { type: 'text', text: `Transferred playback to ${deviceId}` },
+        ],
+      };
+    } catch (error) {
+      return toolError('transferring playback', error);
+    }
+  },
+});
+
+const seekToPosition = defineTool({
+  name: 'seekToPosition',
+  description:
+    'Seek to a position in the currently playing track, in milliseconds. Requires Spotify Premium.',
+  schema: {
+    positionMs: z.number().int().min(0).describe('Position in milliseconds'),
+    deviceId: deviceIdSchema,
+  },
+  handler: async (args, _extra: SpotifyHandlerExtra) => {
+    const { positionMs, deviceId } = args;
+    try {
+      await spotifyFetch('me/player/seek', {
+        method: 'PUT',
+        query: { position_ms: positionMs, device_id: deviceId },
+      });
+      return {
+        content: [
+          { type: 'text', text: `Seeked to ${formatDuration(positionMs)}` },
+        ],
+      };
+    } catch (error) {
+      return toolError('seeking', error);
+    }
+  },
+});
+
 export const playTools = [
   playMusic,
   pausePlayback,
@@ -588,4 +716,8 @@ export const playTools = [
   addToQueue,
   setVolume,
   adjustVolume,
+  setShuffle,
+  setRepeat,
+  transferPlayback,
+  seekToPosition,
 ];
