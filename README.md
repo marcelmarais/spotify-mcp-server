@@ -3,6 +3,8 @@
 <h1>Spotify MCP Server</h1>
 </div>
 
+[![Trust Score](https://archestra.ai/mcp-catalog/api/badge/quality/marcelmarais/spotify-mcp-server)](https://archestra.ai/mcp-catalog/marcelmarais__spotify-mcp-server)
+
 A lightweight [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server that enables AI assistants like Cursor & Claude to control Spotify playback and manage playlists.
 
 <details>
