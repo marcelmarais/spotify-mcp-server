@@ -20,6 +20,10 @@ export function mockConfig(t, overrides = {}) {
     ...overrides,
   };
   const exists = fs.existsSync;
+  const realpath = fs.realpathSync;
+  t.mock.method(fs, 'realpathSync', (path, ...args) =>
+    path === configPath ? configPath : realpath(path, ...args),
+  );
   const read = fs.readFileSync;
   const write = fs.writeFileSync;
   t.mock.method(
@@ -30,9 +34,38 @@ export function mockConfig(t, overrides = {}) {
   t.mock.method(fs, 'readFileSync', (path, ...args) =>
     path === configPath ? JSON.stringify(config) : read(path, ...args),
   );
+  const pending = new Map();
+  const fds = new Map();
+  const isTemp = (path) => String(path).startsWith(`${configPath}.`);
+  const open = fs.openSync;
+  t.mock.method(fs, 'openSync', (path, ...args) => {
+    if (!isTemp(path)) return open(path, ...args);
+    const fd = 1_000_000 + fds.size;
+    fds.set(fd, path);
+    pending.set(path, '');
+    return fd;
+  });
   t.mock.method(fs, 'writeFileSync', (path, data, ...args) => {
     if (path === configPath) config = JSON.parse(data);
+    else if (fds.has(path)) pending.set(fds.get(path), data);
     else write(path, data, ...args);
+  });
+  for (const name of ['fchmodSync', 'closeSync']) {
+    const original = fs[name];
+    t.mock.method(fs, name, (fd, ...args) => {
+      if (!fds.has(fd)) original(fd, ...args);
+    });
+  }
+  const unlink = fs.unlinkSync;
+  t.mock.method(fs, 'unlinkSync', (path, ...args) => {
+    if (!pending.delete(path)) unlink(path, ...args);
+  });
+  const rename = fs.renameSync;
+  t.mock.method(fs, 'renameSync', (from, to, ...args) => {
+    if (to === configPath && pending.has(from)) {
+      config = JSON.parse(pending.get(from));
+      pending.delete(from);
+    } else rename(from, to, ...args);
   });
   return () => config;
 }

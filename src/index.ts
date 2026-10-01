@@ -1,4 +1,6 @@
+import type { AddressInfo } from 'node:net';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
+import { formatHost, httpOptionsFromEnv, serveHttp } from './http.js';
 import { createServer } from './server.js';
 import { createSpotifyApi } from './utils.js';
 
@@ -15,8 +17,17 @@ setInterval(
   45 * 60 * 1000,
 ).unref();
 
-serveStdio(createServer, {
-  onerror(error) {
-    console.error('MCP transport error:', error);
-  },
-});
+const http = httpOptionsFromEnv();
+if (http) {
+  const server = await serveHttp(createServer, http);
+  const { port } = server.address() as AddressInfo;
+  console.error(
+    `Spotify MCP server listening on http://${formatHost(http.host)}:${port}/mcp`,
+  );
+} else {
+  serveStdio(createServer, {
+    onerror(error) {
+      console.error('MCP transport error:', error);
+    },
+  });
+}
