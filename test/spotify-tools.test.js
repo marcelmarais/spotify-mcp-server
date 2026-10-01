@@ -1401,3 +1401,111 @@ test('createPlaylistFromQueries picks the best of several search results', async
   );
   assert.match(resultText(result), /Teenage Dirtbag — Wheatus \[t1\]/);
 });
+
+test('reorderPlaylistItems is not replayed after a gateway error', async (t) => {
+  // Spotify may have applied the move before the gateway failed; replaying the
+  // same positions would move a different item.
+  const result = await run(
+    t,
+    [
+      {
+        url: `playlists/${P22}/items`,
+        method: 'PUT',
+        body: { range_start: 0, insert_before: 3 },
+        status: 502,
+        response: { error: { message: 'bad gateway' } },
+      },
+    ],
+    'reorderPlaylistItems',
+    { playlistId: P22, rangeStart: 0, insertBefore: 3 },
+  );
+  const text = result.content[0].text;
+  assert.match(text, /Error reordering/);
+  assert.match(text, /may already have been applied/);
+});
+
+test('spotifyFetch still retries other PUT requests on 503', async (t) => {
+  const url = 'me/player/shuffle?state=false';
+  const result = await run(
+    t,
+    [
+      {
+        url,
+        method: 'PUT',
+        status: 503,
+        response: { error: { message: 'x' } },
+      },
+      { url, method: 'PUT' },
+    ],
+    'setShuffle',
+    { state: false },
+  );
+  assert.notEqual(result.isError, true);
+});
+
+for (const query of ['', '   ']) {
+  test(`moveLikedSongsToPlaylist rejects an empty query (${JSON.stringify(query)}) without any requests`, async (t) => {
+    const result = await run(t, [], 'moveLikedSongsToPlaylist', {
+      toPlaylist: 'storage',
+      query,
+      dryRun: false,
+    });
+    assert.equal(result.isError, true);
+    assert.match(result.content[0].text, /query/i);
+  });
+}
+
+test('spotifyFetch does not retry early when Retry-After exceeds the wait budget', async (t) => {
+  const url = 'me/tracks?limit=50&offset=0';
+  const result = await run(
+    t,
+    [
+      {
+        url,
+        status: 429,
+        headers: { 'Retry-After': '120' },
+        response: { error: { message: 'rate' } },
+      },
+    ],
+    'getAllSavedTracks',
+    {},
+  );
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /retry after 120 seconds/i);
+});
+
+test('findDuplicateTracks keeps episode URIs when removing duplicates', async (t) => {
+  const episode = (id) => ({
+    item: {
+      id,
+      name: 'Same Episode',
+      type: 'episode',
+      duration_ms: 60000,
+      description: '',
+      release_date: '2026-01-01',
+      show: { id: 's1', name: 'Show' },
+    },
+  });
+  const result = await run(
+    t,
+    [
+      playlistsPage([S22, 'storage']),
+      {
+        url: `playlists/${S22}/items?limit=50&offset=0&additional_types=track%2Cepisode`,
+        response: {
+          total: 2,
+          items: [episode('episode1'), episode('episode2')],
+        },
+      },
+      {
+        url: `playlists/${S22}/items`,
+        method: 'DELETE',
+        body: { items: [{ uri: 'spotify:episode:episode2' }] },
+        response: { snapshot_id: 's' },
+      },
+    ],
+    'findDuplicateTracks',
+    { source: 'storage', action: 'remove' },
+  );
+  assert.match(resultText(result), /Removed 1 duplicate/);
+});

@@ -19,6 +19,7 @@ const LIKED = 'liked';
 
 interface Song {
   id: string;
+  uri: string;
   name: string;
   artists: string[];
   album: string;
@@ -45,6 +46,7 @@ function toSong(
     const ep = item as SpotifyEpisode;
     return {
       id: ep.id,
+      uri: `spotify:episode:${ep.id}`,
       name: ep.name,
       artists: [ep.show?.name ?? 'Unknown show'],
       album: '',
@@ -55,6 +57,7 @@ function toSong(
   const track = item as SpotifyTrack;
   return {
     id: track.id,
+    uri: `spotify:track:${track.id}`,
     name: track.name,
     artists: track.artists.map((a) => a.name),
     album: track.album?.name ?? '',
@@ -153,8 +156,6 @@ function coverage(query: string, song: Song): number {
 
 const MIN_COVERAGE = 0.7;
 
-const uri = (id: string) => `spotify:track:${id}`;
-
 // ---------------------------------------------------------------- duplicates
 
 const findDuplicateTracks = defineTool({
@@ -201,7 +202,7 @@ const findDuplicateTracks = defineTool({
       }
       const dupes = [...groups.values()].filter((g) => g.length > 1);
 
-      const removable: string[] = [];
+      const removable: Song[] = [];
       const repeated: string[] = [];
       const rendered = dupes.map((group) => {
         const indexed = group.map((song, i) => ({ song, i }));
@@ -220,8 +221,8 @@ const findDuplicateTracks = defineTool({
               repeated.push(`${keep.name} [${keep.id}]`);
               noted.add(song.id);
             }
-          } else if (!removable.includes(song.id)) {
-            removable.push(song.id);
+          } else if (!removable.some((s) => s.id === song.id)) {
+            removable.push(song);
           }
         }
         return lines.join('\n');
@@ -239,7 +240,7 @@ const findDuplicateTracks = defineTool({
 
       let removedNote = '';
       if (action === 'remove' && removable.length > 0) {
-        const uris = removable.map(uri);
+        const uris = removable.map((s) => s.uri);
         const { processed, error } = loaded.isLiked
           ? await processInChunks(uris, 40, (part) =>
               spotifyFetch('me/library', {
@@ -559,7 +560,7 @@ const createPlaylistFromQueries = defineTool({
       }
       const playlistId = playlist.id;
       const { processed, error } = await processInChunks(
-        toAdd.map((s) => uri(s.id)),
+        toAdd.map((s) => s.uri),
         100,
         (part) =>
           spotifyFetch(`playlists/${playlistId}/items`, {

@@ -3,7 +3,7 @@ import { MAX_BULK_IDS, partialFailure, processInChunks } from './paging.js';
 import { playlistIdFrom, playlistParam } from './resolve.js';
 import { defineTool, toolError } from './tool.js';
 import type { SpotifyHandlerExtra } from './types.js';
-import { handleSpotifyRequest, spotifyFetch } from './utils.js';
+import { handleSpotifyRequest, isGatewayError, spotifyFetch } from './utils.js';
 
 const getPlaylist = defineTool({
   name: 'getPlaylist',
@@ -263,6 +263,8 @@ const reorderPlaylistItems = defineTool({
           ...(rangeLength !== undefined ? { range_length: rangeLength } : {}),
           ...(snapshotId ? { snapshot_id: snapshotId } : {}),
         },
+        // Positional: replaying a move that already happened moves other items.
+        retryGatewayErrors: false,
       });
 
       const count = rangeLength ?? 1;
@@ -283,6 +285,10 @@ const reorderPlaylistItems = defineTool({
             type: 'text',
             text: `Error reordering playlist items: ${
               error instanceof Error ? error.message : String(error)
+            }${
+              isGatewayError(error)
+                ? '\nThe reorder may already have been applied. Check the playlist order before retrying.'
+                : ''
             }`,
           },
         ],

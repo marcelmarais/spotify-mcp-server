@@ -52,17 +52,33 @@ let cachedSpotifyApi: SpotifyApi | null = null;
 const MAX_RETRIES = 3;
 const MAX_RETRY_AFTER_SECONDS = 30;
 
-// 429 means the request was not processed, so it is safe to retry for every
-// method. Gateway errors are only retried for methods that are safe to repeat.
-function isRetryable(response: Response, method: string): boolean {
-  if (response.status === 429) return true;
-  return [502, 503, 504].includes(response.status) && method !== 'POST';
+export class SpotifyApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
 }
 
-function retryDelayMs(response: Response, attempt: number): number {
+export const isGatewayError = (error: unknown) =>
+  error instanceof SpotifyApiError && [502, 503, 504].includes(error.status);
+
+// 429 means the request was not processed, so it is safe to retry for every
+// method. A gateway error may arrive after Spotify already applied the request,
+// so those are only retried when the caller says repeating it is harmless.
+function isRetryable(response: Response, retryGateway: boolean): boolean {
+  if (response.status === 429) return true;
+  return retryGateway && [502, 503, 504].includes(response.status);
+}
+
+// Returns undefined when Spotify asks us to wait longer than a tool call can
+// reasonably block; retrying earlier would only burn the remaining attempts.
+function retryDelayMs(response: Response, attempt: number): number | undefined {
   const retryAfter = response.headers.get('retry-after');
   if (retryAfter !== null && Number.isFinite(Number(retryAfter))) {
-    return Math.min(Number(retryAfter), MAX_RETRY_AFTER_SECONDS) * 1000;
+    const seconds = Number(retryAfter);
+    return seconds > MAX_RETRY_AFTER_SECONDS ? undefined : seconds * 1000;
   }
   const base = Number(process.env.SPOTIFY_RETRY_BASE_MS ?? 500);
   return base * 2 ** attempt;
@@ -85,9 +101,12 @@ export async function spotifyFetch<T = unknown>(
     method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
     body?: unknown;
     query?: Record<string, string | number | undefined>;
+    /** Retry 502/503/504. Defaults to true except for POST. */
+    retryGatewayErrors?: boolean;
   } = {},
 ): Promise<T> {
   const { method = 'GET', body, query } = options;
+  const retryGateway = options.retryGatewayErrors ?? method !== 'POST';
   const config = loadSpotifyConfig();
 
   // Refresh token if expired
@@ -132,17 +151,27 @@ export async function spotifyFetch<T = unknown>(
   let response = await fetch(url, init);
   for (
     let attempt = 0;
-    !response.ok && attempt < MAX_RETRIES && isRetryable(response, method);
+    !response.ok &&
+    attempt < MAX_RETRIES &&
+    isRetryable(response, retryGateway);
     attempt++
   ) {
-    await sleep(retryDelayMs(response, attempt));
+    const delay = retryDelayMs(response, attempt);
+    if (delay === undefined) {
+      throw new SpotifyApiError(
+        `Spotify API rate limit reached: retry after ${response.headers.get('retry-after')} seconds.`,
+        response.status,
+      );
+    }
+    await sleep(delay);
     response = await fetch(url, init);
   }
 
   if (!response.ok) {
     const errBody = await response.text();
-    throw new Error(
+    throw new SpotifyApiError(
       `Spotify API ${method} ${url} failed (${response.status}): ${errBody}`,
+      response.status,
     );
   }
 

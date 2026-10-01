@@ -83,6 +83,12 @@ const moveLikedSongsToPlaylist = defineTool({
       dryRun = true,
     } = args;
 
+    if (query !== undefined && query.trim() === '') {
+      return toolError(
+        'moving liked songs',
+        new Error('query must not be empty. Use all=true to move everything.'),
+      );
+    }
     const hasSelector =
       all === true ||
       query !== undefined ||
@@ -102,7 +108,7 @@ const moveLikedSongsToPlaylist = defineTool({
       const before = parseDate(addedBefore, 'addedBefore');
       const after = parseDate(addedAfter, 'addedAfter');
       const wantedIds = trackIds ? new Set(trackIds) : undefined;
-      const needle = query?.toLowerCase();
+      const needle = query?.trim().toLowerCase();
 
       const { results: selected } = await collectPages<
         { added_at: string; track: SpotifyTrack | null },

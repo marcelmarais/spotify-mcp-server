@@ -315,7 +315,7 @@ These tools do the paging, chunking and lookups for you, so a client does not ha
 
 All playlist tools accept a playlist **name** wherever they take a `playlistId` (case-insensitive, unique partial matches allowed; ambiguous names produce an error that lists the candidates).
 
-Requests that hit Spotify's rate limit (HTTP 429) are retried automatically (honouring `Retry-After`), and so are transient 502/503/504 errors on requests that are safe to repeat. Long lists are fetched with a few pages in parallel.
+Requests that hit Spotify's rate limit (HTTP 429) are retried automatically after the `Retry-After` delay; if Spotify asks for more than 30 seconds, the tool returns an error with the wait time instead. Transient 502/503/504 errors are retried for requests that are safe to repeat (not for POST or positional reorders). Long lists are fetched with a few pages in parallel.
 
 Large ID lists are accepted by `saveTracksToLibrary`, `removeUsersSavedTracks`, `checkUsersSavedTracks`, `addTracksToPlaylist` and `removeTracksFromPlaylist` (up to 5000 per call); they are split into Spotify-sized requests automatically and report partial progress if a later request fails.
 
