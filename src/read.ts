@@ -820,7 +820,11 @@ const getTopTracks = defineTool({
       .map((track, i) => {
         const artists = track.artists.map((a) => a.name).join(', ');
         const duration = formatDuration(track.duration_ms);
-        return `${i + 1}. "${track.name}" by ${artists} (${duration}) - Popularity: ${track.popularity} - ID: ${track.id}`;
+        const popularity =
+          typeof track.popularity === 'number'
+            ? ` - Popularity: ${track.popularity}`
+            : '';
+        return `${i + 1}. "${track.name}" by ${artists} (${duration})${popularity} - ID: ${track.id}`;
       })
       .join('\n');
 
@@ -875,11 +879,16 @@ const getTopArtists = defineTool({
 
     const formatted = top.items
       .map((artist, i) => {
+        // Spotify omits genres/popularity for apps in Development Mode.
         const genres =
-          artist.genres.length > 0
+          artist.genres?.length > 0
             ? ` - Genres: ${artist.genres.slice(0, 3).join(', ')}`
             : '';
-        return `${i + 1}. ${artist.name} - Popularity: ${artist.popularity}${genres} - ID: ${artist.id}`;
+        const popularity =
+          typeof artist.popularity === 'number'
+            ? ` - Popularity: ${artist.popularity}`
+            : '';
+        return `${i + 1}. ${artist.name}${popularity}${genres} - ID: ${artist.id}`;
       })
       .join('\n');
 

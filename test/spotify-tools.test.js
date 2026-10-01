@@ -334,6 +334,32 @@ for (const mode of ['legacy', { pin: '2026-07-28' }]) {
   }
 }
 
+test('top items omit genres and popularity when Development Mode strips them', async (t) => {
+  mockConfig(t);
+  mockHttp(t, [
+    {
+      url: 'me/top/artists?time_range=medium_term&limit=20',
+      response: { items: [{ id: 'artist1', name: 'Test Artist' }] },
+    },
+    {
+      url: 'me/top/tracks?time_range=medium_term&limit=20',
+      response: { items: [track] },
+    },
+  ]);
+  const client = await connect(t);
+
+  const artists = await client.callTool({
+    name: 'getTopArtists',
+    arguments: {},
+  });
+  assert.equal(artists.isError, undefined);
+  assert.match(resultText(artists), /1\. Test Artist - ID: artist1/);
+
+  const tracks = await client.callTool({ name: 'getTopTracks', arguments: {} });
+  assert.doesNotMatch(resultText(tracks), /undefined/);
+  assert.match(resultText(tracks), /"Test Track" by Test Artist \(3:00\) - ID/);
+});
+
 test('Spotify HTTP failures become MCP tool errors', async (t) => {
   mockConfig(t);
   mockHttp(t, [
