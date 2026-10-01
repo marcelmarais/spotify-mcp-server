@@ -100,7 +100,7 @@ export function mockHttp(t, expected) {
       step.response === undefined ? null : JSON.stringify(step.response),
       {
         status: step.status ?? (step.response === undefined ? 204 : 200),
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...step.headers },
       },
     );
   });

@@ -141,6 +141,44 @@ function refreshSpotifyConfig(bufferMs: number): Promise<SpotifyConfig> {
   return refreshInFlight;
 }
 
+const MAX_RETRIES = 3;
+const MAX_RETRY_AFTER_SECONDS = 30;
+
+export class SpotifyApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
+}
+
+export const isGatewayError = (error: unknown) =>
+  error instanceof SpotifyApiError && [502, 503, 504].includes(error.status);
+
+// 429 means the request was not processed, so it is safe to retry for every
+// method. A gateway error may arrive after Spotify already applied the request,
+// so those are only retried when the caller says repeating it is harmless.
+function isRetryable(response: Response, retryGateway: boolean): boolean {
+  if (response.status === 429) return true;
+  return retryGateway && [502, 503, 504].includes(response.status);
+}
+
+// Returns undefined when Spotify asks us to wait longer than a tool call can
+// reasonably block; retrying earlier would only burn the remaining attempts.
+function retryDelayMs(response: Response, attempt: number): number | undefined {
+  const retryAfter = response.headers.get('retry-after');
+  if (retryAfter !== null && Number.isFinite(Number(retryAfter))) {
+    const seconds = Number(retryAfter);
+    return seconds > MAX_RETRY_AFTER_SECONDS ? undefined : seconds * 1000;
+  }
+  const base = Number(process.env.SPOTIFY_RETRY_BASE_MS ?? 500);
+  return base * 2 ** attempt;
+}
+
+const sleep = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 /**
  * Direct Spotify Web API fetch helper.
  * Used to bypass @spotify/web-api-ts-sdk methods that hit deprecated endpoints
@@ -155,9 +193,12 @@ export async function spotifyFetch<T = unknown>(
     method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
     body?: unknown;
     query?: Record<string, string | number | undefined>;
+    /** Retry 502/503/504. Defaults to true except for POST. */
+    retryGatewayErrors?: boolean;
   } = {},
 ): Promise<T> {
   const { method = 'GET', body, query } = options;
+  const retryGateway = options.retryGatewayErrors ?? method !== 'POST';
   let config = loadSpotifyConfig();
   if (needsRefresh(config, 0)) config = await refreshSpotifyConfig(0);
 
@@ -179,19 +220,39 @@ export async function spotifyFetch<T = unknown>(
     if (qsStr) url += `?${qsStr}`;
   }
 
-  const response = await fetch(url, {
+  const init: RequestInit = {
     method,
     headers: {
       Authorization: `Bearer ${config.accessToken}`,
       ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
     },
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-  });
+  };
+
+  let response = await fetch(url, init);
+  for (
+    let attempt = 0;
+    !response.ok &&
+    attempt < MAX_RETRIES &&
+    isRetryable(response, retryGateway);
+    attempt++
+  ) {
+    const delay = retryDelayMs(response, attempt);
+    if (delay === undefined) {
+      throw new SpotifyApiError(
+        `Spotify API rate limit reached: retry after ${response.headers.get('retry-after')} seconds.`,
+        response.status,
+      );
+    }
+    await sleep(delay);
+    response = await fetch(url, init);
+  }
 
   if (!response.ok) {
     const errBody = await response.text();
-    throw new Error(
+    throw new SpotifyApiError(
       `Spotify API ${method} ${url} failed (${response.status}): ${errBody}`,
+      response.status,
     );
   }
 
@@ -565,9 +626,10 @@ export async function authorizeSpotify(): Promise<void> {
 }
 
 export function formatDuration(ms: number): string {
-  const minutes = Math.floor(ms / 60000);
-  const seconds = ((ms % 60000) / 1000).toFixed(0);
-  return `${minutes}:${seconds.padStart(2, '0')}`;
+  const totalSeconds = Math.round(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
 }
 
 export async function handleSpotifyRequest<T>(
