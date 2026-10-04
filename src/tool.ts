@@ -29,3 +29,11 @@ export function defineTool<Args extends z.ZodRawShape>(definition: {
     },
   };
 }
+
+export function toolError(action: string, error: unknown): CallToolResult {
+  const message = error instanceof Error ? error.message : String(error);
+  return {
+    isError: true,
+    content: [{ type: 'text', text: `Error ${action}: ${message}` }],
+  };
+}
