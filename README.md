@@ -111,6 +111,15 @@ A lightweight [Model Context Protocol (MCP)](https://modelcontextprotocol.io) se
    - **Returns**: Success confirmation message
    - **Example**: `removeUsersSavedTracks({ trackIds: ["4iV5W9uYEdYUVa79Axb7Rh", "1301WleyT98MSxVHPZCA6M"] })`
 
+10. **getFollowedArtists**
+
+    - **Description**: Get the artists the current user follows
+    - **Parameters**:
+      - `limit` (number, optional): Maximum number of artists to return (1-50, default: 20)
+      - `after` (string, optional): Cursor from a previous call (the last artist ID) to fetch the next page
+    - **Returns**: Formatted list of followed artists with names and IDs (plus popularity and genres when Spotify provides them), and a cursor for the next page when more remain
+    - **Example**: `getFollowedArtists({ limit: 50 })`
+
 
 ### Play / Create Operations
 

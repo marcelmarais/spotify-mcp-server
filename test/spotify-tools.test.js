@@ -122,6 +122,16 @@ const cases = [
     text: /No top artists/,
   },
   {
+    name: 'getFollowedArtists',
+    http: [
+      {
+        url: 'me/following?type=artist&limit=20',
+        response: { artists: { items: [], next: null, total: 0 } },
+      },
+    ],
+    text: /No followed artists/,
+  },
+  {
     name: 'playMusic',
     args: { type: 'track', id: 'track1' },
     http: [
@@ -358,6 +368,58 @@ test('top items omit genres and popularity when Development Mode strips them', a
   const tracks = await client.callTool({ name: 'getTopTracks', arguments: {} });
   assert.doesNotMatch(resultText(tracks), /undefined/);
   assert.match(resultText(tracks), /"Test Track" by Test Artist \(3:00\) - ID/);
+});
+
+test('getFollowedArtists pages by cursor', async (t) => {
+  mockConfig(t);
+  mockHttp(t, [
+    {
+      url: 'me/following?type=artist&limit=2',
+      response: {
+        artists: {
+          items: [
+            { id: 'artist1', name: 'First Artist', genres: ['dubstep'] },
+            { id: 'artist2', name: 'Second Artist', popularity: 40 },
+          ],
+          next: 'https://api.spotify.com/v1/me/following?type=artist&after=artist2&limit=2',
+          cursors: { after: 'artist2' },
+          total: 3,
+        },
+      },
+    },
+    {
+      url: 'me/following?type=artist&limit=2&after=artist2',
+      response: {
+        artists: {
+          items: [{ id: 'artist3', name: 'Third Artist' }],
+          next: null,
+          cursors: { after: null },
+          total: 3,
+        },
+      },
+    },
+  ]);
+  const client = await connect(t);
+
+  const first = resultText(
+    await client.callTool({
+      name: 'getFollowedArtists',
+      arguments: { limit: 2 },
+    }),
+  );
+  assert.match(first, /# Followed Artists \(2 of 3\)/);
+  assert.match(first, /1\. First Artist - Genres: dubstep - ID: artist1/);
+  assert.match(first, /2\. Second Artist - Popularity: 40 - ID: artist2/);
+  assert.match(first, /after: "artist2"/);
+
+  const last = resultText(
+    await client.callTool({
+      name: 'getFollowedArtists',
+      arguments: { limit: 2, after: 'artist2' },
+    }),
+  );
+  assert.match(last, /1\. Third Artist - ID: artist3/);
+  assert.doesNotMatch(last, /More available|undefined/);
 });
 
 test('Spotify HTTP failures become MCP tool errors', async (t) => {

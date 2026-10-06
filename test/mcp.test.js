@@ -19,6 +19,7 @@ export const toolNames = [
   'removeUsersSavedTracks',
   'getTopTracks',
   'getTopArtists',
+  'getFollowedArtists',
   'playMusic',
   'pausePlayback',
   'skipToNext',

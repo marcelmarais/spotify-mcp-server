@@ -1,4 +1,4 @@
-import type { MaxInt } from '@spotify/web-api-ts-sdk';
+import type { Artist, MaxInt, Page } from '@spotify/web-api-ts-sdk';
 import { z } from 'zod';
 import { defineTool } from './tool.js';
 import type {
@@ -903,6 +903,70 @@ const getTopArtists = defineTool({
   },
 });
 
+const getFollowedArtists = defineTool({
+  name: 'getFollowedArtists',
+  description:
+    'Get the artists the current user follows. Unlike getTopArtists, this ' +
+    'reflects artists the user chose to follow rather than listening history.',
+  schema: {
+    limit: z
+      .number()
+      .min(1)
+      .max(50)
+      .optional()
+      .describe('Maximum number of artists to return (1-50)'),
+    after: z
+      .string()
+      .optional()
+      .describe(
+        'Cursor from a previous call (the last artist ID) to fetch the next page',
+      ),
+  },
+  handler: async (args, _extra: SpotifyHandlerExtra) => {
+    const { limit = 20, after } = args;
+
+    // This endpoint pages by cursor, which the SDK's Page type doesn't model.
+    const { artists } = await spotifyFetch<{
+      artists: Page<Artist> & { cursors?: { after?: string | null } };
+    }>('me/following', { query: { type: 'artist', limit, after } });
+
+    if (artists.items.length === 0) {
+      return {
+        content: [{ type: 'text', text: 'No followed artists found.' }],
+      };
+    }
+
+    const formatted = artists.items
+      .map((artist, i) => {
+        // Spotify omits genres/popularity for apps in Development Mode.
+        const genres =
+          artist.genres?.length > 0
+            ? ` - Genres: ${artist.genres.slice(0, 3).join(', ')}`
+            : '';
+        const popularity =
+          typeof artist.popularity === 'number'
+            ? ` - Popularity: ${artist.popularity}`
+            : '';
+        return `${i + 1}. ${artist.name}${popularity}${genres} - ID: ${artist.id}`;
+      })
+      .join('\n');
+
+    const nextCursor = artists.next ? artists.cursors?.after : undefined;
+    const more = nextCursor
+      ? `\n\nMore available — pass after: "${nextCursor}" for the next page.`
+      : '';
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `# Followed Artists (${artists.items.length} of ${artists.total})\n\n${formatted}${more}`,
+        },
+      ],
+    };
+  },
+});
+
 export const readTools = [
   searchSpotify,
   getNowPlaying,
@@ -915,4 +979,5 @@ export const readTools = [
   getAvailableDevices,
   getTopTracks,
   getTopArtists,
+  getFollowedArtists,
 ];
