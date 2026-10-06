@@ -14,25 +14,22 @@ function tempDir(t) {
 
 const unixOnly = process.platform === 'win32' ? test.skip : test;
 
-unixOnly(
-  'writing through a symlink updates the target and keeps the link',
-  (t) => {
-    const dir = tempDir(t);
-    fs.mkdirSync(path.join(dir, 'real'));
-    const target = path.join(dir, 'real', 'config.json');
-    const link = path.join(dir, 'config.json');
-    fs.writeFileSync(target, 'old');
-    fs.symlinkSync(target, link);
+unixOnly('writing through a symlink updates the target and keeps the link', (t) => {
+  const dir = tempDir(t);
+  fs.mkdirSync(path.join(dir, 'real'));
+  const target = path.join(dir, 'real', 'config.json');
+  const link = path.join(dir, 'config.json');
+  fs.writeFileSync(target, 'old');
+  fs.symlinkSync(target, link);
 
-    writeFileAtomic(link, 'new');
+  writeFileAtomic(link, 'new');
 
-    assert.ok(fs.lstatSync(link).isSymbolicLink());
-    assert.equal(fs.readlinkSync(link), target);
-    assert.equal(fs.readFileSync(target, 'utf8'), 'new');
-    assert.deepEqual(fs.readdirSync(dir).sort(), ['config.json', 'real']);
-    assert.deepEqual(fs.readdirSync(path.join(dir, 'real')), ['config.json']);
-  },
-);
+  assert.ok(fs.lstatSync(link).isSymbolicLink());
+  assert.equal(fs.readlinkSync(link), target);
+  assert.equal(fs.readFileSync(target, 'utf8'), 'new');
+  assert.deepEqual(fs.readdirSync(dir).sort(), ['config.json', 'real']);
+  assert.deepEqual(fs.readdirSync(path.join(dir, 'real')), ['config.json']);
+});
 
 unixOnly('existing permissions survive a restrictive umask', (t) => {
   const dir = tempDir(t);
