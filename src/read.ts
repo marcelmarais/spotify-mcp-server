@@ -156,7 +156,9 @@ const searchSpotify = defineTool({
                 typeof track.popularity === 'number'
                   ? `, popularity: ${track.popularity}`
                   : '';
-              return `${i + 1}. "${track.name}" by ${artists} (${duration}${popularity}) - ID: ${track.id}`;
+              const album = track.album?.name ? ` [${track.album.name}]` : '';
+              const explicit = track.explicit ? ' [E]' : '';
+              return `${i + 1}. "${track.name}"${explicit} by ${artists}${album} (${duration}${popularity}) - ID: ${track.id}`;
             })
             .join('\n');
         } else if (type === 'album' && results.albums) {
@@ -410,7 +412,8 @@ const getPlaylistTracks = defineTool({
         if (isTrack(track)) {
           const artists = track.artists.map((a) => a.name).join(', ');
           const duration = formatDuration(track.duration_ms);
-          return `${offset + i + 1}. "${track.name}" by ${artists} (${duration}) - ID: ${track.id}`;
+          const explicit = track.explicit ? ' [E]' : '';
+          return `${offset + i + 1}. "${track.name}"${explicit} by ${artists} (${duration}) - ID: ${track.id}`;
         }
 
         if (track.type === 'episode') {
