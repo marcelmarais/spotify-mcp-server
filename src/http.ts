@@ -72,25 +72,19 @@ interface AuthOptions {
    * Docker).
    */
   explicitResourceUrl?: string;
-  /** Returns the effective resource URL, e.g. with the bound port. */
-  resolveResourceUrl: () => string;
 }
 
 export function authOptionsFromEnv(
   env: NodeJS.ProcessEnv = process.env,
-  base?: HttpOptions,
 ): AuthOptions | undefined {
   if (env.MCP_AUTH !== 'spotify') return undefined;
-  const host = env.SPOTIFY_RESOURCE_HOST || base?.host || '127.0.0.1';
-  const port = env.SPOTIFY_RESOURCE_PORT || String(base?.port ?? 3000);
-  const resourceUrl =
-    env.SPOTIFY_RESOURCE_URL || `http://${formatHost(host)}:${port}`;
   return {
     authorizationServers: env.SPOTIFY_AUTHORIZATION_SERVERS?.split(',').filter(
       Boolean,
     ) ?? ['https://accounts.spotify.com'],
-    explicitResourceUrl: env.SPOTIFY_RESOURCE_URL,
-    resolveResourceUrl: () => resourceUrl,
+    ...(env.SPOTIFY_RESOURCE_URL
+      ? { explicitResourceUrl: env.SPOTIFY_RESOURCE_URL }
+      : {}),
   };
 }
 
@@ -105,13 +99,12 @@ export async function serveHttp(
   });
   let guards: Guard[] = [];
 
-  // The resource address is resolved once after the socket binds and is then
-  // reused for the metadata document and every 401 challenge, so they can
-  // never advertise different addresses (including port 0 before listen).
-  // Before the server is listening, fall back to the configured port.
-  let resourceUrl = auth
-    ? (auth.explicitResourceUrl ?? `http://${formatHost(host)}:${port}`)
-    : '';
+  // The resource address is resolved exactly once, in the `listening` handler
+  // below, now that the socket has bound. The metadata document and every 401
+  // challenge reuse this single value, so they can never advertise different
+  // addresses. The port comes from the bound socket, so MCP_HTTP_PORT=0 (let
+  // the OS choose) is handled correctly instead of leaking a literal "0".
+  let resourceUrl = '';
   const resourceMetadataUrl = () =>
     `${resourceUrl}/.well-known/oauth-protected-resource`;
 
@@ -198,10 +191,15 @@ export async function serveHttp(
 
   server.once('listening', () => {
     const bound = server.address();
+    const boundPort = typeof bound === 'object' && bound ? bound.port : port;
     if (typeof bound === 'object' && bound && isLoopbackAddress(bound.address))
       guards = loopbackGuards(host, bound.address);
     if (auth) {
-      resourceUrl = auth.explicitResourceUrl ?? auth.resolveResourceUrl();
+      // An explicitly configured SPOTIFY_RESOURCE_URL always wins (Docker
+      // service name, reverse-proxy URL). Otherwise derive it from the
+      // configured host and the *bound* port.
+      resourceUrl =
+        auth.explicitResourceUrl ?? `http://${formatHost(host)}:${boundPort}`;
     }
   });
   await new Promise<void>((resolve, reject) => {

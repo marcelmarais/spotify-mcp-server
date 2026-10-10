@@ -13,8 +13,7 @@ import { createSpotifyApi } from './utils.js';
 // expires mid-session (tokens last 60 minutes; this keeps a safe buffer).
 // Skipped in OAuth mode: tokens arrive fresh from the MCP client per
 // request, and no local refresh token exists.
-const auth = authOptionsFromEnv();
-if (!auth) {
+if (!authOptionsFromEnv()) {
   setInterval(
     async () => {
       try {
@@ -31,33 +30,16 @@ if (http) {
   // Auth mode (MCP_AUTH=spotify): MCP clients (e.g. MCPHub) perform the
   // Spotify OAuth flow themselves and present the resulting access token as
   // Bearer. The token is used per request and never written to
-  // spotify-config.json.
-  if (auth) {
-    // The resource address is resolved once after the socket binds:
-    // SPOTIFY_RESOURCE_URL (if set) is the canonical URL the MCP client uses
-    // to reach this server (e.g. a Docker service name or reverse-proxy URL)
-    // and wins over the bind address; otherwise derive it from the bound
-    // port. The metadata document and the 401 challenge reuse this single
-    // value.
-    const resource: { value?: string } = {};
-    const server = await serveHttp(createServer, http, {
-      ...auth,
-      resolveResourceUrl: () => resource.value ?? auth.resolveResourceUrl(),
-    });
-    const address = server.address() as AddressInfo | null;
-    resource.value =
-      auth.explicitResourceUrl ??
-      `http://${formatHost(http.host)}:${address?.port ?? http.port}`;
-    console.error(
-      `Spotify MCP server listening on http://${formatHost(http.host)}:${address?.port ?? http.port}/mcp (OAuth: Bearer tokens required)`,
-    );
-  } else {
-    const server = await serveHttp(createServer, http);
-    const { port } = server.address() as AddressInfo;
-    console.error(
-      `Spotify MCP server listening on http://${formatHost(http.host)}:${port}/mcp`,
-    );
-  }
+  // spotify-config.json. serveHttp resolves the protected-resource address
+  // once the socket binds (bound port) so metadata and 401 challenges agree.
+  const auth = authOptionsFromEnv();
+  const server = await serveHttp(createServer, http, auth);
+  const { port } = server.address() as AddressInfo;
+  console.error(
+    `Spotify MCP server listening on http://${formatHost(http.host)}:${port}/mcp${
+      auth ? ' (OAuth: Bearer tokens required)' : ''
+    }`,
+  );
 } else {
   serveStdio(createServer, {
     onerror(error) {
