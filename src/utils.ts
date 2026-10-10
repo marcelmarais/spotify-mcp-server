@@ -6,6 +6,7 @@ import readline from 'node:readline';
 import { fileURLToPath, URL } from 'node:url';
 import { SpotifyApi } from '@spotify/web-api-ts-sdk';
 import open from 'open';
+import { getSpotifyRequestToken } from './request-context.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CONFIG_FILE = path.join(__dirname, '../spotify-config.json');
@@ -158,10 +159,16 @@ export async function spotifyFetch<T = unknown>(
   } = {},
 ): Promise<T> {
   const { method = 'GET', body, query } = options;
-  let config = loadSpotifyConfig();
-  if (needsRefresh(config, 0)) config = await refreshSpotifyConfig(0);
+  // In HTTP auth mode (MCP_AUTH=spotify) the client supplies a fresh access
+  // token per request; prefer it over the config-file flow.
+  const bearerToken = getSpotifyRequestToken();
+  let config = bearerToken ? null : loadSpotifyConfig();
+  if (config && needsRefresh(config, 0)) {
+    config = await refreshSpotifyConfig(0);
+  }
 
-  if (!config.accessToken) {
+  const accessToken = bearerToken ?? config?.accessToken;
+  if (!accessToken) {
     throw new Error(
       'No access token available. Run "npm run auth" to authenticate.',
     );
@@ -182,7 +189,7 @@ export async function spotifyFetch<T = unknown>(
   const response = await fetch(url, {
     method,
     headers: {
-      Authorization: `Bearer ${config.accessToken}`,
+      Authorization: `Bearer ${accessToken}`,
       ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
     },
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
@@ -202,6 +209,28 @@ export async function spotifyFetch<T = unknown>(
 }
 
 export async function createSpotifyApi(): Promise<SpotifyApi> {
+  // HTTP auth mode: use the per-request Bearer token directly. It is a live
+  // Spotify access token, so there is nothing to refresh here. No refresh
+  // token is passed, which is fine: withAccessToken only uses it on 401.
+  const bearerToken = getSpotifyRequestToken();
+  if (bearerToken) {
+    if (
+      cachedSpotifyApi &&
+      cachedAccessToken === `request:${bearerToken.slice(-32)}`
+    ) {
+      return cachedSpotifyApi;
+    }
+    cachedSpotifyApi = SpotifyApi.withAccessToken('request', {
+      access_token: bearerToken,
+      token_type: 'Bearer',
+      expires_in: 3600,
+      // No refresh token: the MCP client rotates tokens for us.
+      refresh_token: undefined as unknown as string,
+    });
+    cachedAccessToken = `request:${bearerToken.slice(-32)}`;
+    return cachedSpotifyApi;
+  }
+
   const refreshBufferMs = 5 * 60 * 1000;
   let config = loadSpotifyConfig();
   if (needsRefresh(config, refreshBufferMs)) {

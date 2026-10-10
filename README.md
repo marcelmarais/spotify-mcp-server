@@ -21,6 +21,8 @@ A lightweight [Model Context Protocol (MCP)](https://modelcontextprotocol.io) se
   - [Spotify API Configuration](#spotify-api-configuration)
   - [Authentication Process](#authentication-process)
 - [Integrating with Claude Desktop, Cursor, and VsCode (Cline)](#integrating-with-claude-desktop-and-cursor)
+  - [Streamable HTTP](#streamable-http)
+  - [OAuth (MCPHub and other OAuth-capable clients)](#oauth-mcphub-and-other-oauth-capable-clients)
 </details>
 
 ## Example Interactions
@@ -420,6 +422,58 @@ MCP_TRANSPORT=http MCP_HTTP_PORT=3000 node path/to/spotify-mcp-server/build/inde
 ```
 
 Clients then connect to `http://127.0.0.1:3000/mcp`. `MCP_HTTP_PORT` defaults to `3000` and `MCP_HTTP_HOST` to `127.0.0.1`. On a loopback address, requests whose `Host` or `Origin` header names anything other than `localhost`, `127.0.0.1`, `[::1]`, `MCP_HTTP_HOST` or the bound address are rejected to prevent DNS rebinding. The endpoint has no authentication, so only bind another address behind something that provides it.
+
+### OAuth (MCPHub and other OAuth-capable clients)
+
+Set `MCP_AUTH=spotify` in addition to `MCP_TRANSPORT=http`. The server then acts as an OAuth-protected MCP endpoint (RFC 9728) whose authorization server is Spotify itself:
+
+```bash
+MCP_TRANSPORT=http MCP_HTTP_PORT=3000 MCP_AUTH=spotify node path/to/spotify-mcp-server/build/index.js
+```
+
+- `POST /mcp` without an `Authorization: Bearer` header returns `401` with a `WWW-Authenticate` challenge pointing at `/.well-known/oauth-protected-resource`.
+- That metadata document advertises `https://accounts.spotify.com` as the authorization server, so clients with OAuth support (e.g. MCPHub) discover Spotify, run the authorization-code flow in the browser, and reconnect with the issued access token.
+- The Bearer token is used **per request** as the Spotify access token and is never written to `spotify-config.json` — no `npm run auth`, no stored refresh token, no token-refresh timer. Token rotation by the client is handled transparently.
+- `spotify-config.json` is not required in this mode. stdio mode is unchanged and still uses the config file.
+
+Environment variables:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `MCP_AUTH` | unset (stdio/config-file mode) | `spotify` enables Bearer-token auth on the HTTP transport |
+| `SPOTIFY_RESOURCE_URL` | derived from bind host/port | `resource` value in the protected-resource metadata. Set this to the public URL the MCP client uses when the server is reachable under a different address (reverse proxy, Docker port mapping). |
+| `SPOTIFY_AUTHORIZATION_SERVERS` | `https://accounts.spotify.com` | Comma-separated list of authorization server URLs in the metadata. |
+
+**One-time Spotify app setup** (same dashboard as for the other flows): add the redirect URI your MCP client uses for callbacks (e.g. `http://localhost:3000/oauth/callback` for a local MCPHub dashboard) and copy the **client ID** into the client's OAuth configuration. Spotify does not support dynamic client registration, so the client ID must be provided manually. The client secret is only needed by clients that exchange the code using `client_secret_basic`/`client_secret_post`.
+
+Example MCPHub configuration:
+
+```json
+{
+  "mcpServers": {
+    "spotify": {
+      "type": "streamable-http",
+      "url": "http://127.0.0.1:3000/mcp",
+      "oauth": {
+        "clientId": "your-spotify-client-id",
+        "authorizationEndpoint": "https://accounts.spotify.com/authorize",
+        "tokenEndpoint": "https://accounts.spotify.com/api/token",
+        "redirectUri": "http://localhost:3000/oauth/callback",
+        "scopes": [
+          "user-read-playback-state",
+          "user-modify-playback-state",
+          "user-read-currently-playing",
+          "playlist-read-private",
+          "playlist-read-collaborative",
+          "playlist-modify-private",
+          "playlist-modify-public"
+        ],
+        "resource": "http://127.0.0.1:3000"
+      }
+    }
+  }
+}
+```
 
 ## Development
 
