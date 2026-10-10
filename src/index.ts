@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
