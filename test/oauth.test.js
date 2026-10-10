@@ -1,26 +1,41 @@
 import assert from 'node:assert/strict';
 import { request } from 'node:http';
-import test from 'node:test';
+import { beforeEach, test } from 'node:test';
 import {
   Client,
   StreamableHTTPClientTransport,
 } from '@modelcontextprotocol/client';
-import { authOptionsFromEnv, formatHost, serveHttp } from '../build/http.js';
+import {
+  authOptionsFromEnv,
+  formatHost,
+  resetTokenValidationCache,
+  serveHttp,
+} from '../build/http.js';
 import { createServer } from '../build/server.js';
+import { SPOTIFY_SCOPES } from '../build/utils.js';
 import { resultText } from './helpers.js';
 
 const METADATA = '/.well-known/oauth-protected-resource';
+
+// The token-validation memo lives in the http module and would otherwise
+// carry validated tokens across tests within this process.
+beforeEach(resetTokenValidationCache);
 
 /**
  * Like mockHttp from helpers.js, but only intercepts Spotify API calls and
  * lets the MCP client's own fetches to the local server pass through (the
  * stdio-based helper cannot be used with StreamableHTTPClientTransport, whose
  * client also uses globalThis.fetch).
+ *
+ * The /me token-validation ping (issued by the HTTP transport when a Bearer
+ * token first appears) is answered here without consuming a queued step, so
+ * queued steps remain the actual tool calls. Set meStatus to 401 to simulate
+ * a token Spotify rejects.
  */
-function mockSpotify(t, expected) {
+function mockSpotify(t, expected, { meStatus = 200 } = {}) {
   let index = 0;
-  const realFetch = globalThis.fetch;
   const requests = [];
+  const realFetch = globalThis.fetch;
   t.mock.method(globalThis, 'fetch', async (input, options = {}) => {
     const request = new Request(input, options);
     if (!request.url.startsWith('https://api.spotify.com/')) {
@@ -28,6 +43,12 @@ function mockSpotify(t, expected) {
     }
     const body = await request.text();
     requests.push({ url: request.url, method: request.method, body });
+    if (request.url === 'https://api.spotify.com/v1/me') {
+      return new Response(JSON.stringify({ id: 'me' }), {
+        status: meStatus,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
     const step = expected[index++];
     assert.ok(step, `Unexpected request: ${request.method} ${request.url}`);
     assert.equal(
@@ -51,6 +72,7 @@ function mockSpotify(t, expected) {
     );
   });
   t.after(() => assert.equal(index, expected.length, JSON.stringify(requests)));
+  return requests;
 }
 
 function raw(
@@ -87,21 +109,29 @@ function raw(
   });
 }
 
-async function startAuthServer(t, { port = 0 } = {}) {
+const initialize = JSON.stringify({
+  jsonrpc: '2.0',
+  id: 1,
+  method: 'initialize',
+  params: {
+    protocolVersion: '2025-06-18',
+    capabilities: {},
+    clientInfo: { name: 'test', version: '1.0.0' },
+  },
+});
+
+async function startAuthServer(t) {
   const auth = {
     authorizationServers: ['https://accounts.spotify.com'],
-    resourceUrl: 'http://127.0.0.1:3000',
-    resourceMetadataUrl:
-      'http://127.0.0.1:3000/.well-known/oauth-protected-resource',
+    resolveResourceUrl: () => 'http://127.0.0.1:3000',
   };
   const server = await serveHttp(
     createServer,
-    { host: '127.0.0.1', port },
+    { host: '127.0.0.1', port: 0 },
     auth,
   );
   t.after(() => server.close());
-  const { port: boundPort } = server.address();
-  return boundPort;
+  return { port: server.address().port };
 }
 
 async function startPlainServer(t) {
@@ -116,12 +146,12 @@ test('authOptionsFromEnv is opt-in and configurable', () => {
     undefined,
   );
   const base = { host: '127.0.0.1', port: 4123 };
-  assert.deepEqual(authOptionsFromEnv({ MCP_AUTH: 'spotify' }, base), {
-    authorizationServers: ['https://accounts.spotify.com'],
-    resourceUrl: 'http://127.0.0.1:4123',
-    resourceMetadataUrl:
-      'http://127.0.0.1:4123/.well-known/oauth-protected-resource',
-  });
+  const plain = authOptionsFromEnv({ MCP_AUTH: 'spotify' }, base);
+  assert.deepEqual(plain.authorizationServers, [
+    'https://accounts.spotify.com',
+  ]);
+  assert.equal(plain.resolveResourceUrl(), 'http://127.0.0.1:4123');
+  assert.equal(plain.explicitResourceUrl, undefined);
   assert.equal(
     authOptionsFromEnv(
       {
@@ -129,7 +159,7 @@ test('authOptionsFromEnv is opt-in and configurable', () => {
         SPOTIFY_RESOURCE_URL: 'http://mcphub.example:3000',
       },
       base,
-    ).resourceUrl,
+    ).resolveResourceUrl(),
     'http://mcphub.example:3000',
   );
   assert.equal(
@@ -145,7 +175,7 @@ test('authOptionsFromEnv is opt-in and configurable', () => {
 });
 
 test('unauthenticated /mcp request gets 401 with WWW-Authenticate', async (t) => {
-  const port = await startAuthServer(t);
+  const { port } = await startAuthServer(t);
   const response = await raw(port);
   assert.equal(response.status, 401);
   assert.match(
@@ -155,7 +185,7 @@ test('unauthenticated /mcp request gets 401 with WWW-Authenticate', async (t) =>
 });
 
 test('malformed Authorization header still gets 401', async (t) => {
-  const port = await startAuthServer(t);
+  const { port } = await startAuthServer(t);
   for (const value of ['', 'Bearer', 'Token abc', 'bearer abc']) {
     const response = await raw(port, {
       headers: { Authorization: value },
@@ -165,7 +195,7 @@ test('malformed Authorization header still gets 401', async (t) => {
 });
 
 test('protected resource metadata advertises Spotify as authorization server', async (t) => {
-  const port = await startAuthServer(t);
+  const { port } = await startAuthServer(t);
   const response = await raw(port, { method: 'GET', path: METADATA });
   assert.equal(response.status, 200);
   assert.equal(response.headers['content-type'], 'application/json');
@@ -183,6 +213,14 @@ test('protected resource metadata advertises Spotify as authorization server', a
   );
 });
 
+test('metadata advertises the full required scope set', async (t) => {
+  const { port } = await startAuthServer(t);
+  const response = await raw(port, { method: 'GET', path: METADATA });
+  const metadata = JSON.parse(response.body);
+  assert.deepEqual(metadata.scopes_supported, [...SPOTIFY_SCOPES]);
+  assert.equal(metadata.scopes_supported.length, 15);
+});
+
 test('metadata endpoint is absent without auth mode', async (t) => {
   const port = await startPlainServer(t);
   const response = await raw(port, { method: 'GET', path: METADATA });
@@ -190,12 +228,24 @@ test('metadata endpoint is absent without auth mode', async (t) => {
 });
 
 test('MCP round trip with Bearer token works end to end', async (t) => {
-  const port = await startAuthServer(t);
+  const { port } = await startAuthServer(t);
+  // The transport validates the first-seen Bearer token with a /me ping, so
+  // the mock must be installed before the client connects.
+  mockSpotify(t, [
+    {
+      url: 'me/player/devices',
+      authorization: 'Bearer oauth-test-token',
+      response: { devices: [] },
+    },
+  ]);
   const client = new Client(
     { name: 'spotify-test', version: '1.0.0' },
     { versionNegotiation: { mode: 'legacy' } },
   );
-  t.after(() => client.close());
+  t.after(() => {
+    resetTokenValidationCache();
+    return client.close();
+  });
   await client.connect(
     new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp`), {
       requestInit: {
@@ -209,13 +259,6 @@ test('MCP round trip with Bearer token works end to end', async (t) => {
   // The Bearer token must reach the Spotify API, not the config file:
   // no spotify-config.json exists in the repo, so a fallback to it would
   // throw.
-  mockSpotify(t, [
-    {
-      url: 'me/player/devices',
-      authorization: 'Bearer oauth-test-token',
-      response: { devices: [] },
-    },
-  ]);
   const result = await client.callTool({
     name: 'getAvailableDevices',
     arguments: {},
@@ -224,19 +267,15 @@ test('MCP round trip with Bearer token works end to end', async (t) => {
 });
 
 test('each request carries its own token', async (t) => {
-  const port = await startAuthServer(t);
+  const { port } = await startAuthServer(t);
   const client = new Client(
     { name: 'spotify-test', version: '1.0.0' },
     { versionNegotiation: { mode: 'legacy' } },
   );
-  t.after(() => client.close());
-  await client.connect(
-    new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp`), {
-      requestInit: {
-        headers: { Authorization: 'Bearer first-token' },
-      },
-    }),
-  );
+  t.after(() => {
+    resetTokenValidationCache();
+    return client.close();
+  });
   // Simulate MCPHub refreshing: a fresh access token per request. The
   // server must not cache the old one into the Spotify API client.
   const transports = ['Bearer first-token', 'Bearer rotated-token'];
@@ -253,6 +292,13 @@ test('each request carries its own token', async (t) => {
       response: { devices: [] },
     },
   ]);
+  await client.connect(
+    new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp`), {
+      requestInit: {
+        headers: { Authorization: 'Bearer first-token' },
+      },
+    }),
+  );
   for (const token of transports) {
     // A fresh client transport per token, mirroring a reconnect after refresh.
     const client2 = new Client(
@@ -278,6 +324,80 @@ test('each request carries its own token', async (t) => {
   await client.close();
 });
 
+test('removeUsersSavedTracks uses the Bearer token, not the config file', async (t) => {
+  const { port } = await startAuthServer(t);
+  // No spotify-config.json exists in the repo: if the tool fell back to the
+  // config-file token it would throw here instead of deleting with the
+  // Bearer token.
+  mockSpotify(t, [
+    {
+      url: 'me/library?uris=spotify%3Atrack%3Atrack1',
+      method: 'DELETE',
+      authorization: 'Bearer oauth-remove-token',
+    },
+  ]);
+  const client = new Client(
+    { name: 'spotify-test', version: '1.0.0' },
+    { versionNegotiation: { mode: 'legacy' } },
+  );
+  t.after(() => {
+    resetTokenValidationCache();
+    return client.close();
+  });
+  await client.connect(
+    new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp`), {
+      requestInit: {
+        headers: { Authorization: 'Bearer oauth-remove-token' },
+      },
+    }),
+  );
+  const result = await client.callTool({
+    name: 'removeUsersSavedTracks',
+    arguments: { trackIds: ['track1'] },
+  });
+  assert.match(resultText(result), /Successfully removed 1 track/);
+});
+
+test('a first-seen Bearer token is validated against Spotify once', async (t) => {
+  const { port } = await startAuthServer(t);
+  const requests = mockSpotify(t, [], { meStatus: 200 });
+  // Distinct token so this test never reuses a memoised validation.
+  const response = await raw(port, {
+    headers: { Authorization: 'Bearer validation-token-a' },
+    body: initialize,
+  });
+  assert.equal(response.status, 200);
+  assert.equal(requests.filter((r) => r.url.endsWith('/v1/me')).length, 1);
+  assert.equal(requests[0].url, 'https://api.spotify.com/v1/me');
+});
+
+test('a Bearer token Spotify rejects gets 401 invalid_token', async (t) => {
+  const { port } = await startAuthServer(t);
+  mockSpotify(t, [], { meStatus: 401 });
+  const response = await raw(port, {
+    headers: { Authorization: 'Bearer invalid-token-b' },
+    body: initialize,
+  });
+  assert.equal(response.status, 401);
+  const header = response.headers['www-authenticate'];
+  assert.match(header, /error="invalid_token"/);
+  assert.match(
+    header,
+    /resource_metadata="http:\/\/127\.0\.0\.1:\d+\/\.well-known\/oauth-protected-resource"/,
+  );
+});
+
+test('a Spotify validation outage does not pass the token through', async (t) => {
+  const { port } = await startAuthServer(t);
+  mockSpotify(t, [], { meStatus: 500 });
+  const response = await raw(port, {
+    headers: { Authorization: 'Bearer outage-token-c' },
+    body: initialize,
+  });
+  assert.equal(response.status, 502);
+  assert.match(response.headers['www-authenticate'], /error="server_error"/);
+});
+
 test('formatHost stays importable for metadata resource URLs', () => {
   assert.equal(formatHost('::1'), '[::1]');
   assert.equal(formatHost('127.0.0.1'), '127.0.0.1');
@@ -285,10 +405,10 @@ test('formatHost stays importable for metadata resource URLs', () => {
 
 test('authOptionsFromEnv surfaces explicitResourceUrl only when set', () => {
   const base = { host: '0.0.0.0', port: 3000 };
-  // Unset: field absent so callers can tell it was not explicitly configured.
+  // Unset: no explicit URL, the caller must derive it from the bound socket.
   assert.equal(
-    'explicitResourceUrl' in authOptionsFromEnv({ MCP_AUTH: 'spotify' }, base),
-    false,
+    authOptionsFromEnv({ MCP_AUTH: 'spotify' }, base).explicitResourceUrl,
+    undefined,
   );
   // Set: the explicit URL wins, e.g. a Docker service name over 0.0.0.0.
   const explicit = authOptionsFromEnv(
@@ -296,7 +416,7 @@ test('authOptionsFromEnv surfaces explicitResourceUrl only when set', () => {
     base,
   );
   assert.equal(explicit?.explicitResourceUrl, 'http://spotify-mcp:3000');
-  assert.equal(explicit?.resourceUrl, 'http://spotify-mcp:3000');
+  assert.equal(explicit?.resolveResourceUrl(), 'http://spotify-mcp:3000');
 });
 
 test('metadata serves the explicit resource URL over the bind address', async (t) => {
@@ -305,9 +425,6 @@ test('metadata serves the explicit resource URL over the bind address', async (t
   // URL, never the bind address.
   const auth = {
     authorizationServers: ['https://accounts.spotify.com'],
-    resourceUrl: 'http://spotify-mcp:3000',
-    resourceMetadataUrl:
-      'http://spotify-mcp:3000/.well-known/oauth-protected-resource',
     explicitResourceUrl: 'http://spotify-mcp:3000',
     resolveResourceUrl: () => 'http://spotify-mcp:3000',
   };

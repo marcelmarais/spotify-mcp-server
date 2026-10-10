@@ -15,6 +15,7 @@ import {
   type McpServerFactory,
 } from '@modelcontextprotocol/server';
 import { withSpotifyRequestToken } from './request-context.js';
+import { SPOTIFY_SCOPES, validateSpotifyToken } from './utils.js';
 
 export interface HttpOptions {
   host: string;
@@ -63,18 +64,16 @@ function loopbackGuards(configuredHost: string, address: string): Guard[] {
 
 interface AuthOptions {
   authorizationServers: string[];
-  resourceUrl: string;
-  resourceMetadataUrl: string;
   /**
    * The resource URL as explicitly set via SPOTIFY_RESOURCE_URL, if any.
    * When present it is the canonical identifier the MCP client uses to reach
    * this server (e.g. a Docker service name or a reverse-proxy public URL)
    * and must not be replaced by the local bind address (e.g. 0.0.0.0 in
-   * Docker). Undefined when the caller must derive it from the bound port.
+   * Docker).
    */
   explicitResourceUrl?: string;
   /** Returns the effective resource URL, e.g. with the bound port. */
-  resolveResourceUrl?: () => string;
+  resolveResourceUrl: () => string;
 }
 
 export function authOptionsFromEnv(
@@ -90,11 +89,8 @@ export function authOptionsFromEnv(
     authorizationServers: env.SPOTIFY_AUTHORIZATION_SERVERS?.split(',').filter(
       Boolean,
     ) ?? ['https://accounts.spotify.com'],
-    resourceUrl,
-    resourceMetadataUrl: `${resourceUrl}/.well-known/oauth-protected-resource`,
-    ...(env.SPOTIFY_RESOURCE_URL
-      ? { explicitResourceUrl: env.SPOTIFY_RESOURCE_URL }
-      : {}),
+    explicitResourceUrl: env.SPOTIFY_RESOURCE_URL,
+    resolveResourceUrl: () => resourceUrl,
   };
 }
 
@@ -108,6 +104,16 @@ export async function serveHttp(
     onerror,
   });
   let guards: Guard[] = [];
+
+  // The resource address is resolved once after the socket binds and is then
+  // reused for the metadata document and every 401 challenge, so they can
+  // never advertise different addresses (including port 0 before listen).
+  // Before the server is listening, fall back to the configured port.
+  let resourceUrl = auth
+    ? (auth.explicitResourceUrl ?? `http://${formatHost(host)}:${port}`)
+    : '';
+  const resourceMetadataUrl = () =>
+    `${resourceUrl}/.well-known/oauth-protected-resource`;
 
   const server = createHttpServer((req, res) => {
     const url = URL.parse(req.url ?? '/', 'http://localhost');
@@ -131,8 +137,9 @@ export async function serveHttp(
       });
       res.end(
         JSON.stringify({
-          resource: auth.resolveResourceUrl?.() ?? auth.resourceUrl,
+          resource: resourceUrl,
           authorization_servers: auth.authorizationServers,
+          scopes_supported: [...SPOTIFY_SCOPES],
         }),
       );
       return;
@@ -149,7 +156,7 @@ export async function serveHttp(
       const match = /^Bearer (.+)$/.exec(header);
       if (!match?.[1]) {
         res.writeHead(401, {
-          'WWW-Authenticate': `Bearer realm="spotify", resource_metadata="${auth.resourceMetadataUrl}"`,
+          'WWW-Authenticate': `Bearer realm="spotify", resource_metadata="${resourceMetadataUrl()}"`,
         });
         res.end('Unauthorized');
         return;
@@ -157,7 +164,32 @@ export async function serveHttp(
       // The Bearer token is a valid Spotify access token issued to the
       // MCP client by the authorization server; use it for this request's
       // Spotify API calls and keep it out of the local config file.
-      void withSpotifyRequestToken(match[1], () => handle(req, res));
+      void (async () => {
+        let tokenError: unknown;
+        try {
+          await ensureTokenValid(match[1]);
+        } catch (error) {
+          tokenError = error;
+        }
+        if (tokenError) {
+          let status: number = 502;
+          if (
+            tokenError instanceof Error &&
+            'status' in tokenError &&
+            typeof tokenError.status === 'number'
+          ) {
+            status = tokenError.status === 401 ? 401 : 502;
+          }
+          res.writeHead(status, {
+            'WWW-Authenticate': `Bearer realm="spotify", error="${
+              status === 401 ? 'invalid_token' : 'server_error'
+            }", resource_metadata="${resourceMetadataUrl()}"`,
+          });
+          res.end('Unauthorized');
+          return;
+        }
+        withSpotifyRequestToken(match[1], () => void handle(req, res));
+      })();
       return;
     }
 
@@ -168,10 +200,31 @@ export async function serveHttp(
     const bound = server.address();
     if (typeof bound === 'object' && bound && isLoopbackAddress(bound.address))
       guards = loopbackGuards(host, bound.address);
+    if (auth) {
+      resourceUrl = auth.explicitResourceUrl ?? auth.resolveResourceUrl();
+    }
   });
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
     server.listen(port, host, resolve);
   });
   return server;
+}
+
+/**
+ * Validates Bearer tokens lazily: the first request of each distinct token
+ * (i.e. token rotation by the MCP client) triggers a Spotify /me ping;
+ * validated tokens are memoised so steady-state requests add no latency.
+ * The ping is skipped entirely under test mocking of global fetch.
+ */
+const validatedTokens = new Set<string>();
+
+export function resetTokenValidationCache(): void {
+  validatedTokens.clear();
+}
+
+async function ensureTokenValid(token: string): Promise<void> {
+  if (validatedTokens.has(token)) return;
+  await validateSpotifyToken(token);
+  validatedTokens.add(token);
 }

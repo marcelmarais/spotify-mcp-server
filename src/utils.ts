@@ -11,6 +11,30 @@ import { getSpotifyRequestToken } from './request-context.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CONFIG_FILE = path.join(__dirname, '../spotify-config.json');
 
+/**
+ * The full scope set the tool surface actually needs. Used by the local
+ * authorization flow and advertised in the RFC 9728 protected-resource
+ * metadata (scopes_supported) so OAuth clients request exactly what the
+ * server needs.
+ */
+export const SPOTIFY_SCOPES = [
+  'user-read-private',
+  'user-read-email',
+  'user-read-playback-state',
+  'user-modify-playback-state',
+  'user-read-currently-playing',
+  'user-read-playback-position',
+  'playlist-read-private',
+  'playlist-read-collaborative',
+  'playlist-modify-private',
+  'playlist-modify-public',
+  'user-library-read',
+  'user-library-modify',
+  'user-read-recently-played',
+  'user-top-read',
+  'user-follow-read',
+] as const;
+
 export interface SpotifyConfig {
   clientId: string;
   clientSecret: string;
@@ -214,10 +238,10 @@ export async function createSpotifyApi(): Promise<SpotifyApi> {
   // token is passed, which is fine: withAccessToken only uses it on 401.
   const bearerToken = getSpotifyRequestToken();
   if (bearerToken) {
-    if (
-      cachedSpotifyApi &&
-      cachedAccessToken === `request:${bearerToken.slice(-32)}`
-    ) {
+    // Cache key is the hash of the full token so two different tokens can
+    // never share a cached client, regardless of suffix collisions.
+    const tokenKey = `request:${hashToken(bearerToken)}`;
+    if (cachedSpotifyApi && cachedAccessToken === tokenKey) {
       return cachedSpotifyApi;
     }
     cachedSpotifyApi = SpotifyApi.withAccessToken('request', {
@@ -227,7 +251,7 @@ export async function createSpotifyApi(): Promise<SpotifyApi> {
       // No refresh token: the MCP client rotates tokens for us.
       refresh_token: undefined as unknown as string,
     });
-    cachedAccessToken = `request:${bearerToken.slice(-32)}`;
+    cachedAccessToken = tokenKey;
     return cachedSpotifyApi;
   }
 
@@ -272,6 +296,10 @@ export async function createSpotifyApi(): Promise<SpotifyApi> {
   cachedAccessToken = null;
 
   return cachedSpotifyApi;
+}
+
+function hashToken(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('hex');
 }
 
 function generateRandomString(length: number): string {
@@ -413,29 +441,11 @@ export async function authorizeSpotify(): Promise<void> {
 
   const state = generateRandomString(16);
 
-  const scopes = [
-    'user-read-private',
-    'user-read-email',
-    'user-read-playback-state',
-    'user-modify-playback-state',
-    'user-read-currently-playing',
-    'user-read-playback-position',
-    'playlist-read-private',
-    'playlist-read-collaborative',
-    'playlist-modify-private',
-    'playlist-modify-public',
-    'user-library-read',
-    'user-library-modify',
-    'user-read-recently-played',
-    'user-top-read',
-    'user-follow-read',
-  ];
-
   const authParams = new URLSearchParams({
     client_id: config.clientId,
     response_type: 'code',
     redirect_uri: config.redirectUri,
-    scope: scopes.join(' '),
+    scope: SPOTIFY_SCOPES.join(' '),
     state: state,
     show_dialog: 'true',
   });
@@ -592,6 +602,36 @@ export async function authorizeSpotify(): Promise<void> {
   });
 
   await authPromise;
+}
+
+/**
+ * Checks that a Bearer token is a valid Spotify access token by calling the
+ * /me endpoint. Spotify issues opaque tokens without a JWKS, so audience
+ * checks are not possible — this ping is the strongest validation available
+ * without the client secret. It is used lazily by the HTTP transport only
+ * when a new token first appears (token rotation), not per request.
+ *
+ * @throws an Error with status 401 if the token is rejected by Spotify.
+ */
+export async function validateSpotifyToken(accessToken: string): Promise<void> {
+  const response = await fetch('https://api.spotify.com/v1/me', {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (response.status === 401) {
+    const error = new Error('Spotify rejected the access token') as Error & {
+      status?: number;
+    };
+    error.status = 401;
+    throw error;
+  }
+  if (!response.ok) {
+    const error = new Error(
+      `Spotify token validation failed (${response.status})`,
+    ) as Error & { status?: number };
+    error.status = response.status;
+    throw error;
+  }
 }
 
 export function formatDuration(ms: number): string {
