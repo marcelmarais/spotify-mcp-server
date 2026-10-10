@@ -282,3 +282,45 @@ test('formatHost stays importable for metadata resource URLs', () => {
   assert.equal(formatHost('::1'), '[::1]');
   assert.equal(formatHost('127.0.0.1'), '127.0.0.1');
 });
+
+test('authOptionsFromEnv surfaces explicitResourceUrl only when set', () => {
+  const base = { host: '0.0.0.0', port: 3000 };
+  // Unset: field absent so callers can tell it was not explicitly configured.
+  assert.equal(
+    'explicitResourceUrl' in authOptionsFromEnv({ MCP_AUTH: 'spotify' }, base),
+    false,
+  );
+  // Set: the explicit URL wins, e.g. a Docker service name over 0.0.0.0.
+  const explicit = authOptionsFromEnv(
+    { MCP_AUTH: 'spotify', SPOTIFY_RESOURCE_URL: 'http://spotify-mcp:3000' },
+    base,
+  );
+  assert.equal(explicit?.explicitResourceUrl, 'http://spotify-mcp:3000');
+  assert.equal(explicit?.resourceUrl, 'http://spotify-mcp:3000');
+});
+
+test('metadata serves the explicit resource URL over the bind address', async (t) => {
+  // Mirrors the Docker deployment: bound to 0.0.0.0 but the client reaches the
+  // server as http://spotify-mcp:3000. The metadata must advertise the explicit
+  // URL, never the bind address.
+  const auth = {
+    authorizationServers: ['https://accounts.spotify.com'],
+    resourceUrl: 'http://spotify-mcp:3000',
+    resourceMetadataUrl:
+      'http://spotify-mcp:3000/.well-known/oauth-protected-resource',
+    explicitResourceUrl: 'http://spotify-mcp:3000',
+    resolveResourceUrl: () => 'http://spotify-mcp:3000',
+  };
+  const server = await serveHttp(
+    createServer,
+    { host: '0.0.0.0', port: 0 },
+    auth,
+  );
+  t.after(() => server.close());
+  const boundPort = server.address().port;
+  const response = await raw(boundPort, { method: 'GET', path: METADATA });
+  assert.equal(response.status, 200);
+  const metadata = JSON.parse(response.body);
+  assert.equal(metadata.resource, 'http://spotify-mcp:3000');
+  assert.match(metadata.authorization_servers[0], /accounts\.spotify\.com/);
+});

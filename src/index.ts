@@ -39,7 +39,12 @@ if (http) {
     auth
       ? {
           ...auth,
+          // SPOTIFY_RESOURCE_URL (if set) is the canonical URL the MCP
+          // client uses to reach this server, e.g. a Docker service name or
+          // reverse-proxy URL; it must win over the bind address (0.0.0.0
+          // in Docker). Only derive from the bound socket when it is unset.
           resolveResourceUrl: () =>
+            auth.explicitResourceUrl ??
             `http://${formatHost(http.host)}:${
               (server.address() as AddressInfo | null)?.port ?? http.port
             }`,

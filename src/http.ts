@@ -65,6 +65,14 @@ interface AuthOptions {
   authorizationServers: string[];
   resourceUrl: string;
   resourceMetadataUrl: string;
+  /**
+   * The resource URL as explicitly set via SPOTIFY_RESOURCE_URL, if any.
+   * When present it is the canonical identifier the MCP client uses to reach
+   * this server (e.g. a Docker service name or a reverse-proxy public URL)
+   * and must not be replaced by the local bind address (e.g. 0.0.0.0 in
+   * Docker). Undefined when the caller must derive it from the bound port.
+   */
+  explicitResourceUrl?: string;
   /** Returns the effective resource URL, e.g. with the bound port. */
   resolveResourceUrl?: () => string;
 }
@@ -84,6 +92,9 @@ export function authOptionsFromEnv(
     ) ?? ['https://accounts.spotify.com'],
     resourceUrl,
     resourceMetadataUrl: `${resourceUrl}/.well-known/oauth-protected-resource`,
+    ...(env.SPOTIFY_RESOURCE_URL
+      ? { explicitResourceUrl: env.SPOTIFY_RESOURCE_URL }
+      : {}),
   };
 }
 
@@ -134,7 +145,7 @@ export async function serveHttp(
     }
 
     if (auth) {
-      const header = req.headers['authorization'] ?? '';
+      const header = req.headers.authorization ?? '';
       const match = /^Bearer (.+)$/.exec(header);
       if (!match?.[1]) {
         res.writeHead(401, {
