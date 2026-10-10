@@ -14,6 +14,7 @@ import {
   createMcpHandler,
   type McpServerFactory,
 } from '@modelcontextprotocol/server';
+import { withSpotifyRequestToken } from './request-context.js';
 
 export interface HttpOptions {
   host: string;
@@ -60,9 +61,36 @@ function loopbackGuards(configuredHost: string, address: string): Guard[] {
   return [hostHeaderValidation(hostnames), originValidation(hostnames)];
 }
 
+interface AuthOptions {
+  authorizationServers: string[];
+  resourceUrl: string;
+  resourceMetadataUrl: string;
+  /** Returns the effective resource URL, e.g. with the bound port. */
+  resolveResourceUrl?: () => string;
+}
+
+export function authOptionsFromEnv(
+  env: NodeJS.ProcessEnv = process.env,
+  base?: HttpOptions,
+): AuthOptions | undefined {
+  if (env.MCP_AUTH !== 'spotify') return undefined;
+  const host = env.SPOTIFY_RESOURCE_HOST || base?.host || '127.0.0.1';
+  const port = env.SPOTIFY_RESOURCE_PORT || String(base?.port ?? 3000);
+  const resourceUrl =
+    env.SPOTIFY_RESOURCE_URL || `http://${formatHost(host)}:${port}`;
+  return {
+    authorizationServers: env.SPOTIFY_AUTHORIZATION_SERVERS?.split(',').filter(
+      Boolean,
+    ) ?? ['https://accounts.spotify.com'],
+    resourceUrl,
+    resourceMetadataUrl: `${resourceUrl}/.well-known/oauth-protected-resource`,
+  };
+}
+
 export async function serveHttp(
   factory: McpServerFactory,
   { host, port }: HttpOptions,
+  auth?: AuthOptions,
 ): Promise<Server> {
   const onerror = (error: Error) => console.error('MCP HTTP error:', error);
   const handle = toNodeHandler(createMcpHandler(factory, { onerror }), {
@@ -71,16 +99,57 @@ export async function serveHttp(
   let guards: Guard[] = [];
 
   const server = createHttpServer((req, res) => {
-    if (!guards.every((guard) => guard(req, res))) return;
     const url = URL.parse(req.url ?? '/', 'http://localhost');
     if (!url) {
       res.writeHead(400).end();
       return;
     }
+
+    // Protected resource metadata (RFC 9728). Served unauthenticated and
+    // without the loopback Host/Origin guards so external MCP clients can
+    // discover the authorization server. Only present in auth mode.
+    if (url.pathname === '/.well-known/oauth-protected-resource') {
+      if (!auth) {
+        res.writeHead(404).end();
+        return;
+      }
+      res.writeHead(200, {
+        'content-type': 'application/json',
+        'access-control-allow-origin': '*',
+        'cache-control': 'no-store',
+      });
+      res.end(
+        JSON.stringify({
+          resource: auth.resolveResourceUrl?.() ?? auth.resourceUrl,
+          authorization_servers: auth.authorizationServers,
+        }),
+      );
+      return;
+    }
+
+    if (!guards.every((guard) => guard(req, res))) return;
     if (url.pathname !== '/mcp') {
       res.writeHead(404).end();
       return;
     }
+
+    if (auth) {
+      const header = req.headers['authorization'] ?? '';
+      const match = /^Bearer (.+)$/.exec(header);
+      if (!match?.[1]) {
+        res.writeHead(401, {
+          'WWW-Authenticate': `Bearer realm="spotify", resource_metadata="${auth.resourceMetadataUrl}"`,
+        });
+        res.end('Unauthorized');
+        return;
+      }
+      // The Bearer token is a valid Spotify access token issued to the
+      // MCP client by the authorization server; use it for this request's
+      // Spotify API calls and keep it out of the local config file.
+      void withSpotifyRequestToken(match[1], () => handle(req, res));
+      return;
+    }
+
     void handle(req, res);
   });
 
