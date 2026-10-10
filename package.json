@@ -12,6 +12,7 @@
     "lint": "biome check --diagnostic-level=warn --error-on-warnings",
     "lint:fix": "biome check --write --unsafe",
     "typecheck": "tsc --noEmit",
+    "prepare": "npm run build",
     "test": "npm run build && node --test test/*.test.js"
   },
   "files": [
