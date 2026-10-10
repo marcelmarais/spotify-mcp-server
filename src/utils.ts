@@ -6,9 +6,34 @@ import readline from 'node:readline';
 import { fileURLToPath, URL } from 'node:url';
 import { SpotifyApi } from '@spotify/web-api-ts-sdk';
 import open from 'open';
+import { getSpotifyRequestToken } from './request-context.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CONFIG_FILE = path.join(__dirname, '../spotify-config.json');
+
+/**
+ * The full scope set the tool surface actually needs. Used by the local
+ * authorization flow and advertised in the RFC 9728 protected-resource
+ * metadata (scopes_supported) so OAuth clients request exactly what the
+ * server needs.
+ */
+export const SPOTIFY_SCOPES = [
+  'user-read-private',
+  'user-read-email',
+  'user-read-playback-state',
+  'user-modify-playback-state',
+  'user-read-currently-playing',
+  'user-read-playback-position',
+  'playlist-read-private',
+  'playlist-read-collaborative',
+  'playlist-modify-private',
+  'playlist-modify-public',
+  'user-library-read',
+  'user-library-modify',
+  'user-read-recently-played',
+  'user-top-read',
+  'user-follow-read',
+] as const;
 
 export interface SpotifyConfig {
   clientId: string;
@@ -158,10 +183,16 @@ export async function spotifyFetch<T = unknown>(
   } = {},
 ): Promise<T> {
   const { method = 'GET', body, query } = options;
-  let config = loadSpotifyConfig();
-  if (needsRefresh(config, 0)) config = await refreshSpotifyConfig(0);
+  // In HTTP auth mode (MCP_AUTH=spotify) the client supplies a fresh access
+  // token per request; prefer it over the config-file flow.
+  const bearerToken = getSpotifyRequestToken();
+  let config = bearerToken ? null : loadSpotifyConfig();
+  if (config && needsRefresh(config, 0)) {
+    config = await refreshSpotifyConfig(0);
+  }
 
-  if (!config.accessToken) {
+  const accessToken = bearerToken ?? config?.accessToken;
+  if (!accessToken) {
     throw new Error(
       'No access token available. Run "npm run auth" to authenticate.',
     );
@@ -182,7 +213,7 @@ export async function spotifyFetch<T = unknown>(
   const response = await fetch(url, {
     method,
     headers: {
-      Authorization: `Bearer ${config.accessToken}`,
+      Authorization: `Bearer ${accessToken}`,
       ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
     },
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
@@ -202,6 +233,28 @@ export async function spotifyFetch<T = unknown>(
 }
 
 export async function createSpotifyApi(): Promise<SpotifyApi> {
+  // HTTP auth mode: use the per-request Bearer token directly. It is a live
+  // Spotify access token, so there is nothing to refresh here. No refresh
+  // token is passed, which is fine: withAccessToken only uses it on 401.
+  const bearerToken = getSpotifyRequestToken();
+  if (bearerToken) {
+    // Cache key is the hash of the full token so two different tokens can
+    // never share a cached client, regardless of suffix collisions.
+    const tokenKey = `request:${hashToken(bearerToken)}`;
+    if (cachedSpotifyApi && cachedAccessToken === tokenKey) {
+      return cachedSpotifyApi;
+    }
+    cachedSpotifyApi = SpotifyApi.withAccessToken('request', {
+      access_token: bearerToken,
+      token_type: 'Bearer',
+      expires_in: 3600,
+      // No refresh token: the MCP client rotates tokens for us.
+      refresh_token: undefined as unknown as string,
+    });
+    cachedAccessToken = tokenKey;
+    return cachedSpotifyApi;
+  }
+
   const refreshBufferMs = 5 * 60 * 1000;
   let config = loadSpotifyConfig();
   if (needsRefresh(config, refreshBufferMs)) {
@@ -243,6 +296,10 @@ export async function createSpotifyApi(): Promise<SpotifyApi> {
   cachedAccessToken = null;
 
   return cachedSpotifyApi;
+}
+
+function hashToken(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('hex');
 }
 
 function generateRandomString(length: number): string {
@@ -384,29 +441,11 @@ export async function authorizeSpotify(): Promise<void> {
 
   const state = generateRandomString(16);
 
-  const scopes = [
-    'user-read-private',
-    'user-read-email',
-    'user-read-playback-state',
-    'user-modify-playback-state',
-    'user-read-currently-playing',
-    'user-read-playback-position',
-    'playlist-read-private',
-    'playlist-read-collaborative',
-    'playlist-modify-private',
-    'playlist-modify-public',
-    'user-library-read',
-    'user-library-modify',
-    'user-read-recently-played',
-    'user-top-read',
-    'user-follow-read',
-  ];
-
   const authParams = new URLSearchParams({
     client_id: config.clientId,
     response_type: 'code',
     redirect_uri: config.redirectUri,
-    scope: scopes.join(' '),
+    scope: SPOTIFY_SCOPES.join(' '),
     state: state,
     show_dialog: 'true',
   });
@@ -563,6 +602,36 @@ export async function authorizeSpotify(): Promise<void> {
   });
 
   await authPromise;
+}
+
+/**
+ * Checks that a Bearer token is a valid Spotify access token by calling the
+ * /me endpoint. Spotify issues opaque tokens without a JWKS, so audience
+ * checks are not possible — this ping is the strongest validation available
+ * without the client secret. It is used lazily by the HTTP transport only
+ * when a new token first appears (token rotation), not per request.
+ *
+ * @throws an Error with status 401 if the token is rejected by Spotify.
+ */
+export async function validateSpotifyToken(accessToken: string): Promise<void> {
+  const response = await fetch('https://api.spotify.com/v1/me', {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (response.status === 401) {
+    const error = new Error('Spotify rejected the access token') as Error & {
+      status?: number;
+    };
+    error.status = 401;
+    throw error;
+  }
+  if (!response.ok) {
+    const error = new Error(
+      `Spotify token validation failed (${response.status})`,
+    ) as Error & { status?: number };
+    error.status = response.status;
+    throw error;
+  }
 }
 
 export function formatDuration(ms: number): string {

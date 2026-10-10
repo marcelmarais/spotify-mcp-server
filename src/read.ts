@@ -11,13 +11,7 @@ import type {
   SpotifySimplifiedEpisode,
   SpotifyTrack,
 } from './types.js';
-import {
-  createSpotifyApi,
-  formatDuration,
-  handleSpotifyRequest,
-  loadSpotifyConfig,
-  spotifyFetch,
-} from './utils.js';
+import { formatDuration, handleSpotifyRequest, spotifyFetch } from './utils.js';
 
 function isTrack(item: any): item is SpotifyTrack {
   return (
@@ -729,25 +723,14 @@ const removeUsersSavedTracks = defineTool({
     }
 
     try {
-      // Ensure token is fresh (handles auto-refresh if needed)
-      await createSpotifyApi();
-      const config = loadSpotifyConfig();
-
+      // Route through spotifyFetch() so the per-request OAuth Bearer token
+      // (HTTP auth mode) or the refreshed config-file token (stdio mode) is
+      // used — never a stale config token that could target the wrong account.
       const uris = trackIds.map((id) => `spotify:track:${id}`).join(',');
-      const response = await fetch(
-        `https://api.spotify.com/v1/me/library?uris=${encodeURIComponent(uris)}`,
-        {
-          method: 'DELETE',
-          headers: {
-            Authorization: `Bearer ${config.accessToken}`,
-          },
-        },
-      );
-
-      if (!response.ok) {
-        const errorData = await response.text();
-        throw new Error(`Spotify API error ${response.status}: ${errorData}`);
-      }
+      await spotifyFetch('me/library', {
+        method: 'DELETE',
+        query: { uris },
+      });
 
       return {
         content: [
