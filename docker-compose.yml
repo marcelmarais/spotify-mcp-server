@@ -1,0 +1,50 @@
+# Spotify MCP Server — OAuth-protected Streamable HTTP for MCPHub
+#
+# Design:
+#   - spotify-mcp listens on 0.0.0.0:3000 *inside* the Docker network and is
+#     reachable by the MCPHub container as http://spotify-mcp:3000/mcp.
+#   - NO ports are published to the host, so the server is not exposed on the
+#     host's external interfaces.
+#   - The network is a plain bridge (not `internal: true`): the server needs
+#     outbound access to api.spotify.com for every tool call, even though
+#     MCPHub performs the token exchange. Without a published port the
+#     container is still only reachable from within this network.
+#   - MCPHub must be part of the same network (add `spotify-mcp` to its
+#     extra_networks, or run this compose file on the same network as an
+#     existing MCPHub stack). MCPHub's dashboard/callback URL, not this
+#     server's, is the only part that has to be publicly reachable, because
+#     Spotify's redirect_uri points at MCPHub.
+
+services:
+  spotify-mcp:
+    image: spotify-mcp-server:latest
+    build: .
+    container_name: spotify-mcp
+    restart: unless-stopped
+    environment:
+      MCP_TRANSPORT: http
+      MCP_HTTP_HOST: 0.0.0.0
+      MCP_HTTP_PORT: "3000"
+      MCP_AUTH: spotify
+      # The canonical URL MCPHub uses to reach this server. This is the value
+      # the server advertises in the RFC 9728 protected-resource metadata.
+      SPOTIFY_RESOURCE_URL: ${SPOTIFY_RESOURCE_URL:-http://spotify-mcp:3000}
+    networks:
+      - spotify-mcp
+    # No `ports:` section on purpose — no host exposure.
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/.well-known/oauth-protected-resource').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+networks:
+  spotify-mcp:
+    driver: bridge
