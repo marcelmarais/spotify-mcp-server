@@ -574,8 +574,8 @@ export function formatDuration(ms: number): string {
 export async function handleSpotifyRequest<T>(
   action: (spotifyApi: SpotifyApi) => Promise<T>,
 ): Promise<T> {
+  const spotifyApi = await createSpotifyApi();
   try {
-    const spotifyApi = await createSpotifyApi();
     return await action(spotifyApi);
   } catch (error) {
     // Skip JSON parsing errors as these are actually successful operations
