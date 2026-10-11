@@ -226,15 +226,41 @@ const cases = [
   },
   {
     name: 'adjustVolume',
-    args: { adjustment: 80, deviceId: 'device1' },
+    args: { adjustment: 10, deviceId: 'device1' },
     http: [
-      { url: 'me/player', response: { device } },
       {
-        url: 'me/player/volume?volume_percent=100&device_id=device1',
+        url: 'me/player/devices',
+        response: {
+          devices: [
+            { ...device, id: 'active', volume_percent: 80 },
+            { ...device, is_active: false, volume_percent: 20 },
+          ],
+        },
+      },
+      {
+        url: 'me/player/volume?volume_percent=30&device_id=device1',
         method: 'PUT',
       },
     ],
-    text: /from 50% to 100%/,
+    text: /from 20% to 30%/,
+  },
+  {
+    name: 'adjustVolume',
+    args: { adjustment: 10, deviceId: 'missing' },
+    http: [devices],
+    text: /device is unavailable: missing/,
+  },
+  {
+    name: 'adjustVolume',
+    args: { adjustment: -10 },
+    http: [
+      { url: 'me/player', response: { device } },
+      {
+        url: 'me/player/volume?volume_percent=40',
+        method: 'PUT',
+      },
+    ],
+    text: /from 50% to 40%/,
   },
   {
     name: 'getAlbums',

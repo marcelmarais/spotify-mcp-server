@@ -516,23 +516,33 @@ const adjustVolume = defineTool({
     const { adjustment, deviceId } = args;
 
     try {
-      // First get the current playback state to find current volume
-      const playback = await handleSpotifyRequest(async (spotifyApi) => {
-        return await spotifyApi.player.getPlaybackState();
-      });
-
-      if (!playback?.device) {
-        return {
-          content: [
-            {
-              type: 'text',
-              text: 'No active device found. Make sure Spotify is open and playing on a device.',
-            },
-          ],
-        };
+      let currentVolume: number | null | undefined;
+      if (deviceId) {
+        const data = await spotifyFetch<{
+          devices: Array<{ id: string; volume_percent: number | null }>;
+        }>('me/player/devices');
+        const device = data?.devices?.find((item) => item.id === deviceId);
+        if (!device) {
+          throw new Error(`Spotify device is unavailable: ${deviceId}`);
+        }
+        currentVolume = device.volume_percent;
+      } else {
+        const playback = await handleSpotifyRequest(async (spotifyApi) => {
+          return await spotifyApi.player.getPlaybackState();
+        });
+        if (!playback?.device) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: 'No active device found. Make sure Spotify is open and playing on a device.',
+              },
+            ],
+          };
+        }
+        currentVolume = playback.device.volume_percent;
       }
 
-      const currentVolume = playback.device.volume_percent;
       if (currentVolume === null || currentVolume === undefined) {
         return {
           content: [
