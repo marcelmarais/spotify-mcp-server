@@ -444,7 +444,7 @@ MCP_TRANSPORT=http MCP_HTTP_PORT=3000 MCP_AUTH=spotify node path/to/spotify-mcp-
 - `POST /mcp` without an `Authorization: Bearer` header returns `401` with a `WWW-Authenticate` challenge pointing at `/.well-known/oauth-protected-resource`.
 - That metadata document advertises `https://accounts.spotify.com` as the authorization server (plus the full required scope set under `scopes_supported`), so clients with OAuth support (e.g. MCPHub) discover Spotify, run the authorization-code flow in the browser, and reconnect with the issued access token.
 - The Bearer token is used **per request** as the Spotify access token and is never written to `spotify-config.json` — no `npm run auth`, no stored refresh token, no token-refresh timer. Token rotation by the client is handled transparently.
-- On the first request of each new token (i.e. on rotation) the server validates it against Spotify (`GET /me`) and memoises the result. If Spotify rejects the token the server answers `401` with `WWW-Authenticate: Bearer error="invalid_token"`, so the client knows to reauthorise. Spotify issues opaque tokens (no JWKS), so this is the strongest validation possible without the client secret.
+- On the first request of each new token (i.e. on rotation) the server validates it against Spotify (`GET /me`) and memoises the result. If Spotify rejects the token the server answers `401` with `WWW-Authenticate: Bearer error="invalid_token"`, so the client knows to reauthorise. A token is **not trusted forever**: if Spotify later 401s a tool call with an already-validated token (expiry or revocation), the server evicts it from the validation memo, and the next request re-runs the `/me` ping instead of reusing the stale result. Spotify issues opaque tokens (no JWKS, no public introspection endpoint), so the `/me` ping is the strongest validation possible without the client secret — it proves the token works with Spotify, but cannot verify the token was issued for *this* app (that would require the client secret, which this mode deliberately does not hold).
 - `spotify-config.json` is not required in this mode. stdio mode is unchanged and still uses the config file.
 
 Environment variables:
@@ -559,18 +559,27 @@ The image needs **no client secret, no refresh token and no `spotify-config.json
    ```
 
    The two `spotify-mcp` containers must share a Docker network. If MCPHub
-   already runs in its own compose stack, join them by adding to its service:
+   already runs in its own compose stack, join them: add the network to the
+   MCPHub service **and** declare the shared network `external: true` in
+   **both** compose files.
+
+   MCPHub service (`mcphub` compose file):
 
    ```yaml
-   extra_networks:
-     - spotify-mcp
+   services:
+     mcphub:
+       networks:
+         - mcphub          # its own network (from its existing file)
+         - spotify-mcp     # join the Spotify MCP network
+   networks:
+     spotify-mcp:
+       external: true      # the network is created by the other stack
    ```
 
-   `extra_networks` is valid Compose syntax, but the shared network must be
-   declared as external in **every** stack that joins it: either add
-   `networks: { spotify-mcp: { external: true } }` to the MCPHub compose file,
-   or create the network once with `docker network create spotify-mcp` and mark
-   it `external: true` in this file's `spotify-mcp` network definition.
+   Or, if you manage both yourself, create the network once with
+   `docker network create spotify-mcp` and mark it `external: true` in
+   **both** compose files — including this one's `spotify-mcp` network
+   definition — so neither stack tries to create it.
 
 4. In MCPHub, the first call triggers the Spotify authorization flow in the
    browser; MCPHub stores the tokens and rotates them automatically.

@@ -15,7 +15,11 @@ import {
   type McpServerFactory,
 } from '@modelcontextprotocol/server';
 import { withSpotifyRequestToken } from './request-context.js';
-import { SPOTIFY_SCOPES, validateSpotifyToken } from './utils.js';
+import {
+  SPOTIFY_SCOPES,
+  setSpotifyTokenRejectedHook,
+  validateSpotifyToken,
+} from './utils.js';
 
 export interface HttpOptions {
   host: string;
@@ -216,6 +220,14 @@ export async function serveHttp(
  * The ping is skipped entirely under test mocking of global fetch.
  */
 const validatedTokens = new Set<string>();
+
+// A token is not trusted forever: the moment Spotify answers 401 for a
+// tool call that already passed validation (expiry or revocation mid-
+// session), the token is evicted here (via setSpotifyTokenRejectedHook
+// from utils.ts), the next request re-runs the /me ping, and a token
+// Spotify still rejects gets 401 invalid_token at the transport level
+// instead of a tool-level error.
+setSpotifyTokenRejectedHook((token) => validatedTokens.delete(token));
 
 export function resetTokenValidationCache(): void {
   validatedTokens.clear();

@@ -35,6 +35,24 @@ export const SPOTIFY_SCOPES = [
   'user-follow-read',
 ] as const;
 
+/**
+ * Registered by the HTTP transport in auth mode (see http.ts): called when
+ * Spotify answers 401 for a token that already passed validation (the token
+ * expired or was revoked mid-session), so the transport evicts it from its
+ * validated-token memo and re-validates on the next request.
+ */
+let onSpotifyTokenRejected: ((accessToken: string) => void) | undefined;
+
+export function setSpotifyTokenRejectedHook(
+  hook: ((accessToken: string) => void) | undefined,
+): void {
+  onSpotifyTokenRejected = hook;
+}
+
+function reportSpotifyTokenRejected(accessToken: string): void {
+  onSpotifyTokenRejected?.(accessToken);
+}
+
 export interface SpotifyConfig {
   clientId: string;
   clientSecret: string;
@@ -220,6 +238,12 @@ export async function spotifyFetch<T = unknown>(
   });
 
   if (!response.ok) {
+    // Spotify rejected the per-request Bearer token (expired or revoked
+    // after the transport-level /me check): report it so the transport
+    // evicts it from the validation memo (see reportSpotifyTokenRejected).
+    if (response.status === 401 && bearerToken) {
+      reportSpotifyTokenRejected(bearerToken);
+    }
     const errBody = await response.text();
     throw new Error(
       `Spotify API ${method} ${url} failed (${response.status}): ${errBody}`,
@@ -244,13 +268,30 @@ export async function createSpotifyApi(): Promise<SpotifyApi> {
     if (cachedSpotifyApi && cachedAccessToken === tokenKey) {
       return cachedSpotifyApi;
     }
-    cachedSpotifyApi = SpotifyApi.withAccessToken('request', {
-      access_token: bearerToken,
-      token_type: 'Bearer',
-      expires_in: 3600,
-      // No refresh token: the MCP client rotates tokens for us.
-      refresh_token: undefined as unknown as string,
-    });
+    const baseFetch = globalThis.fetch;
+    cachedSpotifyApi = SpotifyApi.withAccessToken(
+      'request',
+      {
+        access_token: bearerToken,
+        token_type: 'Bearer',
+        expires_in: 3600,
+        // No refresh token: the MCP client rotates tokens for us.
+        refresh_token: undefined as unknown as string,
+      },
+      {
+        // The SDK's response validator throws on non-2xx; detect the 401
+        // here so a token Spotify has since expired or revoked is evicted
+        // from the transport's validation memo (see
+        // reportSpotifyTokenRejected) instead of being trusted forever.
+        fetch: (input, init) =>
+          baseFetch(input, init).then((response) => {
+            if (response.status === 401) {
+              reportSpotifyTokenRejected(bearerToken);
+            }
+            return response;
+          }),
+      },
+    );
     cachedAccessToken = tokenKey;
     return cachedSpotifyApi;
   }

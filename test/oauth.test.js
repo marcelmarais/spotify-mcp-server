@@ -406,6 +406,76 @@ test('a Spotify validation outage does not pass the token through', async (t) =>
   assert.match(response.headers['www-authenticate'], /error="server_error"/);
 });
 
+test('a token that 401s mid-session is invalidated and re-validated', async (t) => {
+  const { port } = await startAuthServer(t);
+  const requests = [];
+  const realFetch = globalThis.fetch;
+  const token = 'expired-mid-session-token';
+  // Async, like the real fetch, so the SDK client's `.then()` on the
+  // response (added to detect Spotify 401s) operates on a Promise.
+  const spotifyFetch = async (input, options = {}) => {
+    const request = new Request(input, options);
+    const url = request.url;
+    if (!url.startsWith('https://api.spotify.com/')) {
+      return realFetch(input, options);
+    }
+    requests.push(url);
+    if (url === 'https://api.spotify.com/v1/me') {
+      return new Response(JSON.stringify({ id: 'me' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (url.startsWith('https://api.spotify.com/v1/me/top/artists')) {
+      return new Response(
+        JSON.stringify({
+          error: { status: 401, message: 'Invalid access token' },
+        }),
+        { status: 401, headers: { 'Content-Type': 'application/json' } },
+      );
+    }
+    throw new Error(`Unexpected request: ${request.method} ${url}`);
+  };
+  t.mock.method(globalThis, 'fetch', spotifyFetch);
+
+  // 1. initialize: first-seen token, /me passes, session starts.
+  const first = await raw(port, {
+    headers: { Authorization: `Bearer ${token}` },
+    body: initialize,
+  });
+  assert.equal(first.status, 200);
+  assert.deepEqual(requests, ['https://api.spotify.com/v1/me']);
+
+  // 2. tools/call: Spotify 401s the already-validated token. The request
+  // must not be answered 200 with a silently failing tool; the token is
+  // evicted from the validation memo as a side effect.
+  const toolCall = JSON.stringify({
+    jsonrpc: '2.0',
+    id: 2,
+    method: 'tools/call',
+    params: {
+      name: 'getTopArtists',
+      arguments: { limit: 1 },
+    },
+  });
+  const second = await raw(port, {
+    headers: { Authorization: `Bearer ${token}` },
+    body: toolCall,
+  });
+  assert.equal(second.status, 200);
+  // The Spotify 401 surfaces to the client (tool error), not a success.
+  assert.match(second.body, /Bad or expired token|Invalid access token/);
+
+  // 3. initialize again with the same token: it must NOT be trusted
+  // forever — the memo entry was evicted, so a second /me ping happens.
+  const third = await raw(port, {
+    headers: { Authorization: `Bearer ${token}` },
+    body: initialize,
+  });
+  assert.equal(third.status, 200);
+  assert.equal(requests.filter((url) => url.endsWith('/v1/me')).length, 2);
+});
+
 test('formatHost stays importable for metadata resource URLs', () => {
   assert.equal(formatHost('::1'), '[::1]');
   assert.equal(formatHost('127.0.0.1'), '127.0.0.1');

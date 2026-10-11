@@ -9,11 +9,11 @@
 #     outbound access to api.spotify.com for every tool call, even though
 #     MCPHub performs the token exchange. Without a published port the
 #     container is still only reachable from within this network.
-#   - MCPHub must be part of the same network (add `spotify-mcp` to its
-#     extra_networks, or run this compose file on the same network as an
-#     existing MCPHub stack). MCPHub's dashboard/callback URL, not this
-#     server's, is the only part that has to be publicly reachable, because
-#     Spotify's redirect_uri points at MCPHub.
+#   - MCPHub must be part of the same network: in the MCPHub stack, add
+#     `spotify-mcp` to the service's networks and declare the shared network
+#     external (see the README's Docker section). MCPHub's dashboard/callback
+#     URL, not this server's, is the only part that has to be publicly
+#     reachable, because Spotify's redirect_uri points at MCPHub.
 
 services:
   spotify-mcp:
