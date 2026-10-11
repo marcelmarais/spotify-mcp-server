@@ -34,6 +34,9 @@ async function ensureActiveDevice(preferredDeviceId?: string): Promise<string> {
       }
       return preferredDeviceId;
     }
+    throw new Error(
+      `Requested Spotify device is unavailable: ${preferredDeviceId}`,
+    );
   }
 
   // Use the already-active device if there is one

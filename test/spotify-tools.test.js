@@ -133,7 +133,7 @@ const cases = [
   },
   {
     name: 'playMusic',
-    args: { type: 'track', id: 'track1' },
+    args: { type: 'track', id: 'track1', deviceId: 'device1' },
     http: [
       devices,
       {
@@ -343,6 +343,20 @@ for (const mode of ['legacy', { pin: '2026-07-28' }]) {
     });
   }
 }
+
+test('playback rejects an unavailable explicitly requested device', async (t) => {
+  mockConfig(t);
+  mockHttp(t, [devices, devices]);
+  const client = await connect(t);
+
+  for (const [name, args] of [
+    ['playMusic', { type: 'track', id: 'track1', deviceId: 'missing' }],
+    ['resumePlayback', { deviceId: 'missing' }],
+  ]) {
+    const result = await client.callTool({ name, arguments: args });
+    assert.match(resultText(result), /device is unavailable: missing/);
+  }
+});
 
 test('top items omit genres and popularity when Development Mode strips them', async (t) => {
   mockConfig(t);
