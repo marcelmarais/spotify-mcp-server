@@ -8,7 +8,11 @@ test('configuration parser errors are not treated as successful actions', async 
   let actionCalled = false;
   const exists = fs.existsSync;
   const read = fs.readFileSync;
-  t.mock.method(fs, 'existsSync', (path) => path === configPath || exists(path));
+  t.mock.method(
+    fs,
+    'existsSync',
+    (path) => path === configPath || exists(path),
+  );
   t.mock.method(fs, 'readFileSync', (path, ...args) =>
     path === configPath ? '{} trailing' : read(path, ...args),
   );
