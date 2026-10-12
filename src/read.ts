@@ -1,6 +1,6 @@
 import type { Artist, MaxInt, Page } from '@spotify/web-api-ts-sdk';
 import { z } from 'zod';
-import { defineTool } from './tool.js';
+import { defineTool, spotifyId } from './tool.js';
 import type {
   SpotifyEpisode,
   SpotifyEpisodesResponse,
@@ -357,7 +357,7 @@ const getPlaylistTracks = defineTool({
   name: 'getPlaylistTracks',
   description: 'Get a list of tracks in a Spotify playlist',
   schema: {
-    playlistId: z.string().describe('The Spotify ID of the playlist'),
+    playlistId: spotifyId.describe('The Spotify ID of the playlist'),
     limit: z
       .number()
       .min(1)
