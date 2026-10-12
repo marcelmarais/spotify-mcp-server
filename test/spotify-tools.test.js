@@ -439,3 +439,24 @@ test('Spotify HTTP failures become MCP tool errors', async (t) => {
   assert.equal(result.isError, true);
   assert.match(result.content[0].text, /403|Forbidden/);
 });
+
+test('playlist IDs that could alter the API path are rejected before any request', async (t) => {
+  mockConfig(t);
+  mockHttp(t, []);
+  const client = await connect(t, { pin: '2026-07-28' });
+  for (const playlistId of [
+    '../me/player',
+    'abc/followers',
+    'abc?market=ES',
+    'abc#',
+    'a%2Fb',
+  ]) {
+    const result = await client
+      .callTool({ name: 'unfollowPlaylist', arguments: { playlistId } })
+      .catch((error) => ({
+        isError: true,
+        content: [{ text: String(error) }],
+      }));
+    assert.equal(result.isError, true, playlistId);
+  }
+});
