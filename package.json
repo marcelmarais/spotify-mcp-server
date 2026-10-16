@@ -19,6 +19,7 @@
   ],
   "keywords": [],
   "author": "Marcel Marais",
+  "license": "MIT",
   "description": "A Model Context Protocol server for Spotify integration",
   "dependencies": {
     "@modelcontextprotocol/node": "^2.1.1",

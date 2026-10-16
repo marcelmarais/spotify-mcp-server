@@ -599,3 +599,7 @@ npm test
 ```
 
 Tests exercise MCP initialization, tool discovery, validation, and Spotify operations using mocked HTTP responses. They do not require Spotify credentials or change your Spotify account.
+
+## License
+
+Licensed under the [MIT License](LICENSE).
