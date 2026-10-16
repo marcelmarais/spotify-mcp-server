@@ -1,0 +1,28 @@
+# VCS / IDE / OS
+.git
+.gitignore
+.vscode
+.DS_Store
+
+# Dependencies are installed in the build stage from the lockfile; do not ship
+# the host's node_modules into the build context.
+node_modules
+
+# Build output is produced in the build stage; never copy a stale one in.
+build
+dist
+
+# Tests, CI and docs are not needed inside the image.
+test
+.github
+README.md
+
+# Secrets and local state must never enter the image.
+.env
+spotify-config.json
+*.log
+
+# Compose / build files (not needed inside the image)
+Dockerfile
+docker-compose.yml
+.env.example

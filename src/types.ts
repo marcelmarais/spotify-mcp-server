@@ -18,6 +18,7 @@ export interface SpotifyTrack {
   name: string;
   type: string;
   duration_ms: number;
+  explicit?: boolean;
   artists: SpotifyArtist[];
   album: SpotifyAlbum;
 }

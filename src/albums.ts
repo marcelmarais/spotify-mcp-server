@@ -160,7 +160,8 @@ const getAlbumTracks = defineTool({
 
           const artists = track.artists.map((a) => a.name).join(', ');
           const duration = formatDuration(track.duration_ms);
-          return `${offset + i + 1}. "${track.name}" by ${artists} (${duration}) - ID: ${track.id}`;
+          const explicit = track.explicit ? ' [E]' : '';
+          return `${offset + i + 1}. "${track.name}"${explicit} by ${artists} (${duration}) - ID: ${track.id}`;
         })
         .join('\n');
 

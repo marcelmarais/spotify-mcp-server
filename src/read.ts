@@ -1,6 +1,6 @@
-import type { MaxInt } from '@spotify/web-api-ts-sdk';
+import type { Artist, MaxInt, Page } from '@spotify/web-api-ts-sdk';
 import { z } from 'zod';
-import { defineTool } from './tool.js';
+import { defineTool, spotifyId } from './tool.js';
 import type {
   SpotifyEpisode,
   SpotifyEpisodesResponse,
@@ -11,13 +11,7 @@ import type {
   SpotifySimplifiedEpisode,
   SpotifyTrack,
 } from './types.js';
-import {
-  createSpotifyApi,
-  formatDuration,
-  handleSpotifyRequest,
-  loadSpotifyConfig,
-  spotifyFetch,
-} from './utils.js';
+import { formatDuration, handleSpotifyRequest, spotifyFetch } from './utils.js';
 
 function isTrack(item: any): item is SpotifyTrack {
   return (
@@ -156,7 +150,9 @@ const searchSpotify = defineTool({
                 typeof track.popularity === 'number'
                   ? `, popularity: ${track.popularity}`
                   : '';
-              return `${i + 1}. "${track.name}" by ${artists} (${duration}${popularity}) - ID: ${track.id}`;
+              const album = track.album?.name ? ` [${track.album.name}]` : '';
+              const explicit = track.explicit ? ' [E]' : '';
+              return `${i + 1}. "${track.name}"${explicit} by ${artists}${album} (${duration}${popularity}) - ID: ${track.id}`;
             })
             .join('\n');
         } else if (type === 'album' && results.albums) {
@@ -361,7 +357,7 @@ const getPlaylistTracks = defineTool({
   name: 'getPlaylistTracks',
   description: 'Get a list of tracks in a Spotify playlist',
   schema: {
-    playlistId: z.string().describe('The Spotify ID of the playlist'),
+    playlistId: spotifyId.describe('The Spotify ID of the playlist'),
     limit: z
       .number()
       .min(1)
@@ -410,7 +406,8 @@ const getPlaylistTracks = defineTool({
         if (isTrack(track)) {
           const artists = track.artists.map((a) => a.name).join(', ');
           const duration = formatDuration(track.duration_ms);
-          return `${offset + i + 1}. "${track.name}" by ${artists} (${duration}) - ID: ${track.id}`;
+          const explicit = track.explicit ? ' [E]' : '';
+          return `${offset + i + 1}. "${track.name}"${explicit} by ${artists} (${duration}) - ID: ${track.id}`;
         }
 
         if (track.type === 'episode') {
@@ -726,25 +723,14 @@ const removeUsersSavedTracks = defineTool({
     }
 
     try {
-      // Ensure token is fresh (handles auto-refresh if needed)
-      await createSpotifyApi();
-      const config = loadSpotifyConfig();
-
+      // Route through spotifyFetch() so the per-request OAuth Bearer token
+      // (HTTP auth mode) or the refreshed config-file token (stdio mode) is
+      // used — never a stale config token that could target the wrong account.
       const uris = trackIds.map((id) => `spotify:track:${id}`).join(',');
-      const response = await fetch(
-        `https://api.spotify.com/v1/me/library?uris=${encodeURIComponent(uris)}`,
-        {
-          method: 'DELETE',
-          headers: {
-            Authorization: `Bearer ${config.accessToken}`,
-          },
-        },
-      );
-
-      if (!response.ok) {
-        const errorData = await response.text();
-        throw new Error(`Spotify API error ${response.status}: ${errorData}`);
-      }
+      await spotifyFetch('me/library', {
+        method: 'DELETE',
+        query: { uris },
+      });
 
       return {
         content: [
@@ -903,6 +889,70 @@ const getTopArtists = defineTool({
   },
 });
 
+const getFollowedArtists = defineTool({
+  name: 'getFollowedArtists',
+  description:
+    'Get the artists the current user follows. Unlike getTopArtists, this ' +
+    'reflects artists the user chose to follow rather than listening history.',
+  schema: {
+    limit: z
+      .number()
+      .min(1)
+      .max(50)
+      .optional()
+      .describe('Maximum number of artists to return (1-50)'),
+    after: z
+      .string()
+      .optional()
+      .describe(
+        'Cursor from a previous call (the last artist ID) to fetch the next page',
+      ),
+  },
+  handler: async (args, _extra: SpotifyHandlerExtra) => {
+    const { limit = 20, after } = args;
+
+    // This endpoint pages by cursor, which the SDK's Page type doesn't model.
+    const { artists } = await spotifyFetch<{
+      artists: Page<Artist> & { cursors?: { after?: string | null } };
+    }>('me/following', { query: { type: 'artist', limit, after } });
+
+    if (artists.items.length === 0) {
+      return {
+        content: [{ type: 'text', text: 'No followed artists found.' }],
+      };
+    }
+
+    const formatted = artists.items
+      .map((artist, i) => {
+        // Spotify omits genres/popularity for apps in Development Mode.
+        const genres =
+          artist.genres?.length > 0
+            ? ` - Genres: ${artist.genres.slice(0, 3).join(', ')}`
+            : '';
+        const popularity =
+          typeof artist.popularity === 'number'
+            ? ` - Popularity: ${artist.popularity}`
+            : '';
+        return `${i + 1}. ${artist.name}${popularity}${genres} - ID: ${artist.id}`;
+      })
+      .join('\n');
+
+    const nextCursor = artists.next ? artists.cursors?.after : undefined;
+    const more = nextCursor
+      ? `\n\nMore available — pass after: "${nextCursor}" for the next page.`
+      : '';
+
+    return {
+      content: [
+        {
+          type: 'text',
+          text: `# Followed Artists (${artists.items.length} of ${artists.total})\n\n${formatted}${more}`,
+        },
+      ],
+    };
+  },
+});
+
 export const readTools = [
   searchSpotify,
   getNowPlaying,
@@ -915,4 +965,5 @@ export const readTools = [
   getAvailableDevices,
   getTopTracks,
   getTopArtists,
+  getFollowedArtists,
 ];

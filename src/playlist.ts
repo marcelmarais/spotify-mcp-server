@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { defineTool } from './tool.js';
+import { defineTool, spotifyId } from './tool.js';
 import type { SpotifyHandlerExtra } from './types.js';
 import { handleSpotifyRequest, spotifyFetch } from './utils.js';
 
@@ -8,7 +8,7 @@ const getPlaylist = defineTool({
   description:
     'Get details of a specific Spotify playlist including tracks count, description and owner',
   schema: {
-    playlistId: z.string().describe('The Spotify ID of the playlist'),
+    playlistId: spotifyId.describe('The Spotify ID of the playlist'),
   },
   handler: async (args, _extra: SpotifyHandlerExtra) => {
     const { playlistId } = args;
@@ -63,7 +63,7 @@ const updatePlaylist = defineTool({
   description:
     'Update the details of a Spotify playlist (name, description, public/private, collaborative)',
   schema: {
-    playlistId: z.string().describe('The Spotify ID of the playlist'),
+    playlistId: spotifyId.describe('The Spotify ID of the playlist'),
     name: z.string().optional().describe('New name for the playlist'),
     description: z
       .string()
@@ -145,7 +145,7 @@ const removeTracksFromPlaylist = defineTool({
   description:
     'Remove one or more tracks from a Spotify playlist (max 100 tracks per request)',
   schema: {
-    playlistId: z.string().describe('The Spotify ID of the playlist'),
+    playlistId: spotifyId.describe('The Spotify ID of the playlist'),
     trackIds: z
       .array(z.string())
       .min(1)
@@ -206,7 +206,7 @@ const reorderPlaylistItems = defineTool({
   description:
     'Reorder a range of tracks within a Spotify playlist by moving them to a new position',
   schema: {
-    playlistId: z.string().describe('The Spotify ID of the playlist'),
+    playlistId: spotifyId.describe('The Spotify ID of the playlist'),
     rangeStart: z
       .number()
       .nonnegative()
@@ -277,9 +277,9 @@ const unfollowPlaylist = defineTool({
     "Remove a playlist from the current user's library (unfollow). " +
     'Note: Spotify does not allow permanent deletion of playlists via the API.',
   schema: {
-    playlistId: z
-      .string()
-      .describe('The Spotify ID of the playlist to unfollow'),
+    playlistId: spotifyId.describe(
+      'The Spotify ID of the playlist to unfollow',
+    ),
   },
   handler: async (args, _extra: SpotifyHandlerExtra) => {
     const { playlistId } = args;
