@@ -26,7 +26,7 @@
     "@modelcontextprotocol/server": "^2.3.1",
     "@spotify/web-api-ts-sdk": "^1.2.0",
     "open": "^11.0.4",
-    "zod": "^4.6.6"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.15",
