@@ -12,7 +12,9 @@ function tempDir(t) {
   return dir;
 }
 
-test('writing through a symlink updates the target and keeps the link', (t) => {
+const unixOnly = process.platform === 'win32' ? test.skip : test;
+
+unixOnly('writing through a symlink updates the target and keeps the link', (t) => {
   const dir = tempDir(t);
   fs.mkdirSync(path.join(dir, 'real'));
   const target = path.join(dir, 'real', 'config.json');
@@ -29,7 +31,7 @@ test('writing through a symlink updates the target and keeps the link', (t) => {
   assert.deepEqual(fs.readdirSync(path.join(dir, 'real')), ['config.json']);
 });
 
-test('existing permissions survive a restrictive umask', (t) => {
+unixOnly('existing permissions survive a restrictive umask', (t) => {
   const dir = tempDir(t);
   const file = path.join(dir, 'config.json');
   fs.writeFileSync(file, 'old');
@@ -43,7 +45,7 @@ test('existing permissions survive a restrictive umask', (t) => {
   assert.equal(fs.readFileSync(file, 'utf8'), 'new');
 });
 
-test('a new file is created owner-only', (t) => {
+unixOnly('a new file is created owner-only', (t) => {
   const dir = tempDir(t);
   const file = path.join(dir, 'config.json');
 
@@ -66,7 +68,7 @@ test('a failed rename leaves the original file and no temp file', (t) => {
   assert.deepEqual(fs.readdirSync(dir), ['config.json']);
 });
 
-test('a dangling symlink is refused and left in place', (t) => {
+unixOnly('a dangling symlink is refused and left in place', (t) => {
   const dir = tempDir(t);
   const target = path.join(dir, 'missing', 'config.json');
   const link = path.join(dir, 'config.json');
