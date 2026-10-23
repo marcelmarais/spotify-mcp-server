@@ -28,7 +28,7 @@ ENV NODE_ENV=production
 
 COPY --from=build --chown=mcp:mcp /app/node_modules ./node_modules
 COPY --from=build --chown=mcp:mcp /app/build ./build
-COPY --chown=mcp:mcp package.json ./
+COPY --chown=mcp:mcp package.json LICENSE ./
 
 USER mcp
 EXPOSE 3000
