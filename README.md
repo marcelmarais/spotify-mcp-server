@@ -588,6 +588,21 @@ If MCPHub reaches the server through a different address (another host, a
 reverse proxy), set `SPOTIFY_RESOURCE_URL` in `.env` to that URL and mirror it
 in MCPHub's `oauth.resource`.
 
+#### Container images
+
+The **CI** workflow builds `linux/amd64` and `linux/arm64` images after lint,
+type checks and tests pass. Pull requests only build; pushes to the default
+branch and manual runs on that branch publish to
+`ghcr.io/<repository-owner>/<repository-name>` (lowercase), using `latest` and
+`sha-<full-commit-SHA>` tags. Pin an image digest for immutable deployments.
+
+Publishing uses the automatic `GITHUB_TOKEN` with `packages: write`; no personal
+access token is required. Enable Actions in new forks if prompted. After the
+first publication, make the package public in **Package settings → Change
+visibility** to allow anonymous pulls. New GHCR packages are private by default
+([GitHub documentation](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry)).
+The image includes the upstream MIT license at `/app/LICENSE`.
+
 ## Development
 
 The server uses MCP TypeScript SDK v2 and Zod 4, serving protocol revision `2026-07-28` while retaining compatibility with legacy MCP clients. Only the latest Node.js Current release is supported (minimum v26.8.1). CI follows the latest Current release. Install the locked dependencies with `npm ci`.
