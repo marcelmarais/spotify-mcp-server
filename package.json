@@ -19,18 +19,19 @@
   ],
   "keywords": [],
   "author": "Marcel Marais",
+  "license": "MIT",
   "description": "A Model Context Protocol server for Spotify integration",
   "dependencies": {
-    "@modelcontextprotocol/node": "^2.1.0",
-    "@modelcontextprotocol/server": "^2.2.0",
+    "@modelcontextprotocol/node": "^2.1.1",
+    "@modelcontextprotocol/server": "^2.3.1",
     "@spotify/web-api-ts-sdk": "^1.2.0",
     "open": "^11.0.4",
-    "zod": "^4.6.5"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.14",
-    "@modelcontextprotocol/client": "^2.2.0",
-    "@types/node": "^26.6.3",
+    "@biomejs/biome": "^2.5.15",
+    "@modelcontextprotocol/client": "^2.3.1",
+    "@types/node": "^26.6.5",
     "typescript": "^7.0.2"
   },
   "engines": {

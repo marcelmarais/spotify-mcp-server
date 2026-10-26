@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { defineTool } from './tool.js';
+import { defineTool, spotifyId } from './tool.js';
 import type { SpotifyHandlerExtra } from './types.js';
 import { handleSpotifyRequest, spotifyFetch } from './utils.js';
 
@@ -295,7 +295,7 @@ const addTracksToPlaylist = defineTool({
     'Add tracks or podcast episodes to a Spotify playlist. ' +
     'Accepts Spotify track IDs, episode IDs, or full Spotify URIs (e.g. spotify:episode:xxx).',
   schema: {
-    playlistId: z.string().describe('The Spotify ID of the playlist'),
+    playlistId: spotifyId.describe('The Spotify ID of the playlist'),
     trackIds: z
       .array(z.string())
       .describe(
