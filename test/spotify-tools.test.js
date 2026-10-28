@@ -422,6 +422,159 @@ test('getFollowedArtists pages by cursor', async (t) => {
   assert.doesNotMatch(last, /More available|undefined/);
 });
 
+const queuePost = (uri, deviceId) => ({
+  url: `me/player/queue?uri=${encodeURIComponent(uri)}${deviceId ? `&device_id=${deviceId}` : ''}`,
+  method: 'POST',
+});
+
+test('addToQueue queues a list of tracks and episodes in order', async (t) => {
+  mockConfig(t);
+  mockHttp(t, [
+    queuePost('spotify:track:track1'),
+    queuePost('spotify:episode:episode1'),
+    queuePost('spotify:track:track2'),
+  ]);
+  const client = await connect(t);
+  const result = await client.callTool({
+    name: 'addToQueue',
+    arguments: {
+      trackIds: ['track1', 'spotify:episode:episode1', 'spotify:track:track2'],
+    },
+  });
+  assert.equal(result.isError, undefined);
+  assert.match(resultText(result), /Added 3 items to queue/);
+});
+
+test('addToQueue treats the queue endpoint’s non-JSON 200 body as success', async (t) => {
+  mockConfig(t);
+  mockHttp(t, [
+    { ...queuePost('spotify:track:track1'), rawBody: 'o0mcsLwLby' },
+    { ...queuePost('spotify:track:track2'), rawBody: 'o0mcsLwLbz' },
+  ]);
+  const client = await connect(t);
+  const result = await client.callTool({
+    name: 'addToQueue',
+    arguments: { trackIds: ['track1', 'track2'] },
+  });
+  assert.match(resultText(result), /Added 2 items to queue/);
+});
+
+test('a non-JSON body on a GET is still an error', async (t) => {
+  mockConfig(t);
+  mockHttp(t, [
+    {
+      url: 'playlists/playlist1/items?limit=50&offset=0&additional_types=track%2Cepisode',
+      rawBody: '<html>oops</html>',
+    },
+  ]);
+  const client = await connect(t);
+  const result = await client.callTool({
+    name: 'addToQueue',
+    arguments: { type: 'playlist', id: 'playlist1' },
+  });
+  assert.equal(result.isError, true);
+  assert.match(result.content[0].text, /Error reading playlist/);
+});
+
+test('addToQueue expands a playlist into its tracks, skipping unqueueable ones', async (t) => {
+  mockConfig(t);
+  mockHttp(t, [
+    {
+      url: 'playlists/playlist1/items?limit=50&offset=0&additional_types=track%2Cepisode',
+      response: {
+        total: 4,
+        items: [
+          { item: { uri: 'spotify:track:track1' } },
+          { item: null },
+          { item: { uri: 'spotify:local:Artist:Album:Song:180' } },
+          { track: { uri: 'spotify:episode:episode1' } },
+        ],
+      },
+    },
+    queuePost('spotify:track:track1'),
+    queuePost('spotify:episode:episode1'),
+  ]);
+  const client = await connect(t);
+  const result = await client.callTool({
+    name: 'addToQueue',
+    arguments: { uri: 'spotify:playlist:playlist1' },
+  });
+  const text = resultText(result);
+  assert.match(text, /Added 2 items from playlist playlist1 to queue/);
+  assert.match(text, /Skipped 2 removed or local tracks/);
+  assert.doesNotMatch(text, /more; call again/);
+});
+
+test('addToQueue pages through an album from an offset and reports what is left', async (t) => {
+  mockConfig(t);
+  mockHttp(t, [
+    {
+      url: 'albums/album1/tracks?limit=2&offset=1',
+      response: {
+        total: 5,
+        items: [{ uri: 'spotify:track:t2' }, { uri: 'spotify:track:t3' }],
+      },
+    },
+    queuePost('spotify:track:t2', 'device1'),
+    queuePost('spotify:track:t3', 'device1'),
+  ]);
+  const client = await connect(t);
+  const result = await client.callTool({
+    name: 'addToQueue',
+    arguments: {
+      type: 'album',
+      id: 'album1',
+      offset: 1,
+      limit: 2,
+      deviceId: 'device1',
+    },
+  });
+  const text = resultText(result);
+  assert.match(text, /Added 2 items from album album1 to queue/);
+  assert.match(text, /has 2 more; call again with offset 3/);
+});
+
+test('addToQueue reports how far it got when Spotify fails mid-batch', async (t) => {
+  mockConfig(t);
+  mockHttp(t, [
+    queuePost('spotify:track:track1'),
+    {
+      ...queuePost('spotify:track:track2'),
+      status: 429,
+      response: { error: { message: 'Rate limited' } },
+    },
+  ]);
+  const client = await connect(t);
+  const result = await client.callTool({
+    name: 'addToQueue',
+    arguments: { trackIds: ['track1', 'track2', 'track3'] },
+  });
+  assert.equal(result.isError, true);
+  const text = result.content[0].text;
+  assert.match(text, /Queued 1 of 3 items/);
+  assert.match(text, /starting with: spotify:track:track2/);
+});
+
+test('addToQueue rejects artists and ambiguous input before any request', async (t) => {
+  mockConfig(t);
+  mockHttp(t, []);
+  const client = await connect(t);
+  for (const args of [
+    { uri: 'spotify:artist:artist1' },
+    {},
+    { trackIds: ['track1'], uri: 'spotify:track:track2' },
+    { type: 'album', id: 'album1/../me' },
+  ]) {
+    const result = await client
+      .callTool({ name: 'addToQueue', arguments: args })
+      .catch((error) => ({
+        isError: true,
+        content: [{ text: String(error) }],
+      }));
+    assert.equal(result.isError, true, JSON.stringify(args));
+  }
+});
+
 test('Spotify HTTP failures become MCP tool errors', async (t) => {
   mockConfig(t);
   mockHttp(t, [

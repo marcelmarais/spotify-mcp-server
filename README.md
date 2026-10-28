@@ -192,15 +192,18 @@ A lightweight [Model Context Protocol (MCP)](https://modelcontextprotocol.io) se
 
 8. **addToQueue**
 
-   - **Description**: Adds a track, album, artist or playlist to the current playback queue
+   - **Description**: Adds items to the end of the playback queue, in order, without interrupting playback. Queues a list of tracks/episodes in one call, or expands an album or playlist into its tracks (Spotify's queue only accepts tracks and episodes, so artists aren't supported). Queues at most 100 items per call.
    - **Parameters**:
-     - `uri` (string, optional): Spotify URI of the item to add to queue (overrides type and id)
-     - `type` (string, optional): Type of item to queue (track, album, artist, playlist)
+     - `trackIds` (array, optional): Spotify IDs or URIs to queue in order (max 100). Plain IDs are treated as tracks; use `spotify:episode:{id}` for episodes
+     - `uri` (string, optional): Spotify URI of a single track, episode, album or playlist (overrides type and id)
+     - `type` (string, optional): Type of item to queue (track, episode, album, playlist)
      - `id` (string, optional): Spotify ID of the item to queue
+     - `offset` (number, optional): Album/playlist only: index of the first track to queue (default: 0)
+     - `limit` (number, optional): Album/playlist only: maximum number of tracks to queue (default and max: 100)
      - `deviceId` (string, optional): ID of the device to queue on
-   - **Returns**: Success status
-   - **Example**: `addToQueue({ uri: "spotify:track:6rqhFgbbKwnb9MLmUQDhG6" })`
-   - **Alternative**: `addToQueue({ type: "track", id: "6rqhFgbbKwnb9MLmUQDhG6" })`
+   - **Returns**: How many items were queued, any removed or local tracks that were skipped, and the offset to continue from if the album or playlist has more. If Spotify fails partway through, it reports how many were queued and which item it stopped at
+   - **Example**: `addToQueue({ trackIds: ["6rqhFgbbKwnb9MLmUQDhG6", "4iV5W9uYEdYUVa79Axb7Rh"] })`
+   - **Alternative**: `addToQueue({ uri: "spotify:playlist:3cEYpjA9oz9GiPac4AsH4n", limit: 20 })`
 
 9. **setVolume**
 
