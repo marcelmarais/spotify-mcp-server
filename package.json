@@ -22,15 +22,15 @@
   "license": "MIT",
   "description": "A Model Context Protocol server for Spotify integration",
   "dependencies": {
-    "@modelcontextprotocol/node": "^2.1.1",
+    "@modelcontextprotocol/node": "^2.1.2",
     "@modelcontextprotocol/server": "^2.3.1",
     "@spotify/web-api-ts-sdk": "^1.2.0",
     "open": "^11.0.4",
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.15",
-    "@modelcontextprotocol/client": "^2.3.1",
+    "@biomejs/biome": "^2.6.3",
+    "@modelcontextprotocol/client": "^2.4.0",
     "@types/node": "^26.6.5",
     "typescript": "^7.0.2"
   },
