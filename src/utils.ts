@@ -253,7 +253,15 @@ export async function spotifyFetch<T = unknown>(
   // Some endpoints (DELETE, PUT) return empty body
   const text = await response.text();
   if (!text) return undefined as T;
-  return JSON.parse(text) as T;
+  try {
+    return JSON.parse(text) as T;
+  } catch (error) {
+    // Some write endpoints answer 2xx with a non-JSON body (POST
+    // me/player/queue returns an opaque ID). The write succeeded, so only
+    // treat unparseable bodies as failures when we needed the data.
+    if (method === 'GET') throw error;
+    return undefined as T;
+  }
 }
 
 export async function createSpotifyApi(): Promise<SpotifyApi> {

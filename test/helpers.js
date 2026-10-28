@@ -97,9 +97,14 @@ export function mockHttp(t, expected) {
         step.form,
       );
     return new Response(
-      step.response === undefined ? null : JSON.stringify(step.response),
+      step.rawBody ??
+        (step.response === undefined ? null : JSON.stringify(step.response)),
       {
-        status: step.status ?? (step.response === undefined ? 204 : 200),
+        status:
+          step.status ??
+          (step.response === undefined && step.rawBody === undefined
+            ? 204
+            : 200),
         headers: { 'Content-Type': 'application/json' },
       },
     );

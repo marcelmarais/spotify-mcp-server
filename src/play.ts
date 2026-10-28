@@ -390,58 +390,207 @@ const resumePlayback = defineTool({
   },
 });
 
+// Spotify's queue endpoint takes one track/episode URI per request, so every
+// queued item is its own POST. Cap a single call to keep it within rate limits.
+const MAX_QUEUE_ITEMS = 100;
+const QUEUE_URI = /^spotify:(track|episode|album|playlist):([A-Za-z0-9]+)$/;
+const QUEUEABLE_ITEM = /^(spotify:(track|episode):)?[A-Za-z0-9]+$/;
+
+/**
+ * Expands an album or playlist into the URIs of its tracks/episodes, in order,
+ * starting at `offset`. Removed tracks and local files can't be queued, so they
+ * are skipped and counted.
+ */
+async function collectQueueUris(
+  type: 'album' | 'playlist',
+  id: string,
+  offset: number,
+  limit: number,
+): Promise<{ uris: string[]; skipped: number; total: number }> {
+  type Entry = {
+    uri?: string;
+    item?: { uri?: string } | null;
+    track?: { uri?: string } | null;
+  };
+  const uris: string[] = [];
+  let skipped = 0;
+  let total = 0;
+  let next = offset;
+
+  while (uris.length + skipped < limit) {
+    const pageSize = Math.min(50, limit - uris.length - skipped);
+    // Playlist entries wrap the track; album tracks are the entries themselves.
+    const page = await spotifyFetch<{ items?: Entry[]; total: number }>(
+      type === 'playlist' ? `playlists/${id}/items` : `albums/${id}/tracks`,
+      {
+        query: {
+          limit: pageSize,
+          offset: next,
+          ...(type === 'playlist' ? { additional_types: 'track,episode' } : {}),
+        },
+      },
+    );
+    const items = page.items ?? [];
+    total = page.total;
+
+    for (const entry of items) {
+      const uri = entry.item?.uri ?? entry.track?.uri ?? entry.uri;
+      if (uri && QUEUEABLE_ITEM.test(uri)) uris.push(uri);
+      else skipped++;
+    }
+
+    next += items.length;
+    if (items.length < pageSize || next >= total) break;
+  }
+
+  return { uris, skipped, total };
+}
+
 const addToQueue = defineTool({
   name: 'addToQueue',
-  description: 'Adds a track, album, artist or playlist to the playback queue',
+  description:
+    'Add items to the end of the playback queue, in order, without interrupting what is playing. ' +
+    'Pass `trackIds` to queue several tracks or episodes in one call, or `type` + `id` (or `uri`) ' +
+    'for a single track/episode or a whole album or playlist, which is expanded into its tracks. ' +
+    `Queues at most ${MAX_QUEUE_ITEMS} items per call; use \`offset\` to continue through a longer album or playlist.`,
   schema: {
+    trackIds: z
+      .array(
+        z
+          .string()
+          .regex(
+            QUEUEABLE_ITEM,
+            'Must be a Spotify ID or a spotify:track:/spotify:episode: URI',
+          ),
+      )
+      .min(1)
+      .max(MAX_QUEUE_ITEMS)
+      .optional()
+      .describe(
+        `Spotify IDs or URIs to queue in order (max ${MAX_QUEUE_ITEMS}). ` +
+          'Plain IDs are assumed to be tracks; pass spotify:episode:{id} for podcast episodes.',
+      ),
     uri: z
       .string()
       .optional()
-      .describe('The Spotify URI to play (overrides type and id)'),
+      .describe(
+        'Spotify URI of a single track, episode, album or playlist (overrides type and id)',
+      ),
     type: z
-      .enum(['track', 'album', 'artist', 'playlist'])
+      .enum(['track', 'episode', 'album', 'playlist'])
       .optional()
-      .describe('The type of item to play'),
-    id: z.string().optional().describe('The Spotify ID of the item to play'),
+      .describe('The type of item to queue'),
+    id: spotifyId.optional().describe('The Spotify ID of the item to queue'),
+    offset: z
+      .number()
+      .int()
+      .min(0)
+      .optional()
+      .describe(
+        'Album/playlist only: index of the first track to queue (default: 0)',
+      ),
+    limit: z
+      .number()
+      .int()
+      .min(1)
+      .max(MAX_QUEUE_ITEMS)
+      .optional()
+      .describe(
+        `Album/playlist only: maximum number of tracks to queue (default and max: ${MAX_QUEUE_ITEMS})`,
+      ),
     deviceId: z
       .string()
       .optional()
-      .describe('The Spotify device ID to add the track to'),
+      .describe('The Spotify device ID to add the items to'),
   },
-  handler: async (args) => {
-    const { uri, type, id, deviceId } = args;
-
-    let spotifyUri = uri;
-    if (!spotifyUri && type && id) {
-      spotifyUri = `spotify:${type}:${id}`;
-    }
-
-    if (!spotifyUri) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: 'Error: Must provide either a URI or both a type and ID',
-            isError: true,
-          },
-        ],
-      };
-    }
-
-    await handleSpotifyRequest(async (spotifyApi) => {
-      await spotifyApi.player.addItemToPlaybackQueue(
-        spotifyUri,
-        deviceId || '',
-      );
+  handler: async (args, _extra: SpotifyHandlerExtra) => {
+    const { trackIds, uri, deviceId, offset = 0 } = args;
+    const limit = args.limit ?? MAX_QUEUE_ITEMS;
+    const fail = (text: string) => ({
+      content: [{ type: 'text' as const, text }],
+      isError: true,
     });
 
+    let type = args.type;
+    let id = args.id;
+    if (uri) {
+      const match = QUEUE_URI.exec(uri);
+      if (!match) {
+        return fail(
+          `Error: Can't queue ${uri}. Spotify can only queue tracks and episodes; ` +
+            'albums and playlists are expanded into their tracks. Artists are not supported.',
+        );
+      }
+      type = match[1] as typeof type;
+      id = match[2];
+    }
+
+    if (trackIds && (type || id)) {
+      return fail(
+        'Error: Pass either trackIds or a single uri/type+id, not both',
+      );
+    }
+    if (!(trackIds || (type && id))) {
+      return fail('Error: Must provide trackIds, a uri, or both a type and id');
+    }
+
+    let uris: string[];
+    let note = '';
+    try {
+      if (trackIds) {
+        uris = trackIds.map((item) =>
+          item.startsWith('spotify:') ? item : `spotify:track:${item}`,
+        );
+      } else if ((type === 'album' || type === 'playlist') && id) {
+        const expanded = await collectQueueUris(type, id, offset, limit);
+        uris = expanded.uris;
+        if (expanded.skipped > 0) {
+          note += ` Skipped ${expanded.skipped} removed or local track${expanded.skipped === 1 ? '' : 's'}.`;
+        }
+        const end = offset + uris.length + expanded.skipped;
+        if (end < expanded.total) {
+          note += ` The ${type} has ${expanded.total - end} more; call again with offset ${end} to continue.`;
+        }
+        if (uris.length === 0) {
+          return fail(
+            `Error: No queueable tracks found in this ${type}.${note}`,
+          );
+        }
+      } else {
+        uris = [`spotify:${type}:${id}`];
+      }
+    } catch (error) {
+      return fail(
+        `Error reading ${type}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+
+    // One at a time and in order: parallel POSTs could land in the queue shuffled.
+    let queued = 0;
+    try {
+      for (const item of uris) {
+        await spotifyFetch('me/player/queue', {
+          method: 'POST',
+          query: { uri: item, device_id: deviceId },
+        });
+        queued++;
+      }
+    } catch (error) {
+      return fail(
+        `Queued ${queued} of ${uris.length} items before Spotify returned an error: ${
+          error instanceof Error ? error.message : String(error)
+        }. Not queued, starting with: ${uris[queued]}`,
+      );
+    }
+
+    const what =
+      uris.length === 1 && !trackIds && type !== 'album' && type !== 'playlist'
+        ? uris[0]
+        : `${uris.length} item${uris.length === 1 ? '' : 's'}${
+            type === 'album' || type === 'playlist' ? ` from ${type} ${id}` : ''
+          }`;
     return {
-      content: [
-        {
-          type: 'text',
-          text: `Added item ${spotifyUri} to queue`,
-        },
-      ],
+      content: [{ type: 'text', text: `Added ${what} to queue.${note}` }],
     };
   },
 });
