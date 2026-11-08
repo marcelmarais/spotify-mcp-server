@@ -7,13 +7,6 @@ A lightweight [Model Context Protocol (MCP)](https://modelcontextprotocol.io) se
 
 Built by Marcel Marais · [Differentiated](https://differentiated.io) · [LinkedIn](https://www.linkedin.com/in/marcelmarais1/) · [X](https://x.com/marcelmarais)
 
-### More tools by me
-
-- **[Stream](https://differentiated.io/stream)**: Daily notes for engineers, with your commits, pull requests, and agents in one place. Free for Mac.
-- **[Timeline](https://timeline.differentiated.io)**: Your location history for Claude, ChatGPT, and Cursor. Free for iPhone.
-
-Find all my tools and writing on AI engineering at **[Differentiated](https://differentiated.io/tools)**.
-
 <details>
 <summary>Contents</summary>
 
@@ -630,3 +623,10 @@ Tests exercise MCP initialization, tool discovery, validation, and Spotify opera
 ## License
 
 Licensed under the [MIT License](LICENSE).
+
+### More tools by me
+
+- **[Stream](https://differentiated.io/stream)**: Daily notes for engineers, with your commits, pull requests, and agents in one place. Free for Mac.
+- **[Timeline](https://timeline.differentiated.io)**: Your location history for Claude, ChatGPT, and Cursor. Free for iPhone.
+
+Find all my tools and writing on AI engineering at **[Differentiated](https://differentiated.io/tools)**.
