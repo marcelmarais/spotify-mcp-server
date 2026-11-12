@@ -20,7 +20,13 @@ const getPlaylist = defineTool({
 
       const owner =
         playlist.owner?.display_name ?? playlist.owner?.id ?? 'Unknown';
-      const tracksTotal = playlist.tracks?.total ?? 0;
+      // Since the March 2026 migration the track container is returned as
+      // `items`; older responses (and the SDK types) still say `tracks`.
+      const counts = playlist as unknown as {
+        tracks?: { total?: number };
+        items?: { total?: number };
+      };
+      const tracksTotal = counts.tracks?.total ?? counts.items?.total ?? 0;
       const isPublic = playlist.public ? 'Public' : 'Private';
       const isCollaborative = playlist.collaborative ? ' | Collaborative' : '';
       const description = playlist.description
