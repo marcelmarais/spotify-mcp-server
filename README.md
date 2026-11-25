@@ -296,7 +296,16 @@ Built by Marcel Marais · [Differentiated](https://differentiated.io) · [Linked
    - **Returns**: Success confirmation with the number of tracks removed
    - **Example**: `removeTracksFromPlaylist({ playlistId: "3cEYpjA9oz9GiPac4AsH4n", trackIds: ["4iV5W9uYEdYUVa79Axb7Rh"] })`
 
-4. **reorderPlaylistItems**
+4. **replacePlaylistItems**
+
+   - **Description**: Replace all items in a playlist with the given tracks (max 100), keeping the same playlist ID, followers and share link
+   - **Parameters**:
+     - `playlistId` (string): The Spotify ID of the playlist
+     - `trackIds` (array): Spotify track IDs or URIs in the desired order (max 100; an empty array clears the playlist)
+   - **Returns**: Success confirmation with the new track count and the playlist's new snapshot ID
+   - **Example**: `replacePlaylistItems({ playlistId: "3cEYpjA9oz9GiPac4AsH4n", trackIds: ["4iV5W9uYEdYUVa79Axb7Rh", "1301WleyT98MSxVHPZCA6M"] })`
+
+5. **reorderPlaylistItems**
 
    - **Description**: Reorder a range of tracks within a Spotify playlist by moving them to a new position
    - **Parameters**:

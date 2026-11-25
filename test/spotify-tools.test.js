@@ -310,6 +310,35 @@ const cases = [
     text: /Successfully removed/,
   },
   {
+    name: 'replacePlaylistItems',
+    args: {
+      playlistId: 'playlist1',
+      trackIds: ['track1', 'spotify:track:track2'],
+    },
+    http: [
+      {
+        url: 'playlists/playlist1/items',
+        method: 'PUT',
+        body: { uris: ['spotify:track:track1', 'spotify:track:track2'] },
+        response: { snapshot_id: 'snapshot2' },
+      },
+    ],
+    text: /Successfully replaced playlist contents with 2 tracks \(snapshot: snapshot2\)/,
+  },
+  {
+    name: 'replacePlaylistItems',
+    args: { playlistId: 'playlist1', trackIds: [] },
+    http: [
+      {
+        url: 'playlists/playlist1/items',
+        method: 'PUT',
+        body: { uris: [] },
+        response: { snapshot_id: 'snapshot3' },
+      },
+    ],
+    text: /Successfully replaced playlist contents with 0 tracks/,
+  },
+  {
     name: 'reorderPlaylistItems',
     args: { playlistId: 'playlist1', rangeStart: 2, insertBefore: 0 },
     http: [
@@ -612,4 +641,19 @@ test('playlist IDs that could alter the API path are rejected before any request
       }));
     assert.equal(result.isError, true, playlistId);
   }
+});
+
+test('replacePlaylistItems rejects more than 100 tracks before any request', async (t) => {
+  mockConfig(t);
+  mockHttp(t, []);
+  const client = await connect(t, { pin: '2026-07-28' });
+  const trackIds = Array.from({ length: 101 }, (_, i) => `track${i}`);
+  const result = await client
+    .callTool({
+      name: 'replacePlaylistItems',
+      arguments: { playlistId: 'playlist1', trackIds },
+    })
+    .catch((error) => ({ isError: true, content: [{ text: String(error) }] }));
+  assert.equal(result.isError, true);
+  assert.doesNotMatch(result.content[0].text, /not found/);
 });
