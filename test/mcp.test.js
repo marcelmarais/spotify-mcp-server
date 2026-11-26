@@ -37,6 +37,7 @@ export const toolNames = [
   'getPlaylist',
   'updatePlaylist',
   'removeTracksFromPlaylist',
+  'replacePlaylistItems',
   'reorderPlaylistItems',
   'unfollowPlaylist',
 ].sort();

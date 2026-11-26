@@ -207,6 +207,59 @@ const removeTracksFromPlaylist = defineTool({
   },
 });
 
+const replacePlaylistItems = defineTool({
+  name: 'replacePlaylistItems',
+  description:
+    'Replace all items in a playlist with the given tracks (max 100), keeping the same playlist ID, followers and share link',
+  schema: {
+    playlistId: spotifyId.describe('The Spotify ID of the playlist'),
+    trackIds: z
+      .array(z.string())
+      .max(100)
+      .describe(
+        'Spotify track IDs or URIs, in the order the playlist should have them (max 100; an empty array clears the playlist)',
+      ),
+  },
+  handler: async (args, _extra: SpotifyHandlerExtra) => {
+    const { playlistId, trackIds } = args;
+
+    try {
+      const uris = trackIds.map((id) =>
+        id.startsWith('spotify:') ? id : `spotify:track:${id}`,
+      );
+
+      // Hit /items directly: SDK targets the deprecated /tracks endpoint
+      // (see spotifyFetch JSDoc for context on the March 2026 migration).
+      const result = await spotifyFetch<{ snapshot_id?: string }>(
+        `playlists/${playlistId}/items`,
+        { method: 'PUT', body: { uris } },
+      );
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Successfully replaced playlist contents with ${uris.length} track${
+              uris.length === 1 ? '' : 's'
+            } (snapshot: ${result?.snapshot_id ?? 'unknown'})`,
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Error replacing playlist items: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          },
+        ],
+      };
+    }
+  },
+});
+
 const reorderPlaylistItems = defineTool({
   name: 'reorderPlaylistItems',
   description:
@@ -322,6 +375,7 @@ export const playlistTools = [
   getPlaylist,
   updatePlaylist,
   removeTracksFromPlaylist,
+  replacePlaylistItems,
   reorderPlaylistItems,
   unfollowPlaylist,
 ];
